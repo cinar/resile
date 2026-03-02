@@ -47,7 +47,7 @@ func TestOtelInstrumenter_Detailed(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	
+
 	// Test attempt > 0 (for counter) and success state
 	state := resile.RetryState{
 		Attempt: 1,
