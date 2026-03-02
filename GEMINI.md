@@ -2,9 +2,6 @@
 
 This repository is governed by the architectural specification in `SPEC.md`.
 
-## Task Workflow
-Implementation should follow the granular specifications in the `tasks/` directory.
-
 ## Core Mandates
 1.  **Zero Dependencies**: The core package must have no external dependencies outside the Go standard library.
 2.  **Type Safety**: Use Go 1.18+ Generics for all execution wrappers.
