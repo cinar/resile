@@ -19,7 +19,7 @@ func TestOtelInstrumenter(t *testing.T) {
 	// Using no-op implementations for simplicity in unit test.
 	tp := trace.NewNoopTracerProvider()
 	mp := noop.NewMeterProvider()
-	
+
 	instr, err := New(tp, mp)
 	if err != nil {
 		t.Fatalf("failed to create instrumenter: %v", err)
