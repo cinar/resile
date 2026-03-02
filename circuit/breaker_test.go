@@ -32,7 +32,7 @@ func TestBreaker_Transitions(t *testing.T) {
 		if cb.State() != StateOpen {
 			t.Error("expected circuit to open after 2 failures")
 		}
-		
+
 		err := cb.Execute(func() error { return nil })
 		if !errors.Is(err, ErrCircuitOpen) {
 			t.Errorf("expected ErrCircuitOpen, got %v", err)
@@ -41,7 +41,7 @@ func TestBreaker_Transitions(t *testing.T) {
 
 	t.Run("HalfOpenAfterTimeout", func(t *testing.T) {
 		time.Sleep(150 * time.Millisecond) // Wait for ResetTimeout to elapse.
-		
+
 		if cb.State() != StateHalfOpen {
 			t.Errorf("expected circuit to be half-open after timeout, got %v", cb.State())
 		}
@@ -61,9 +61,9 @@ func TestBreaker_Transitions(t *testing.T) {
 		// Open it again.
 		_ = cb.Execute(func() error { return errTest })
 		_ = cb.Execute(func() error { return errTest })
-		
+
 		time.Sleep(150 * time.Millisecond) // Wait for ResetTimeout.
-		
+
 		// In Half-Open, a single failure should reopen.
 		_ = cb.Execute(func() error { return errTest })
 		if cb.State() != StateOpen {
