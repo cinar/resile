@@ -13,6 +13,7 @@
 ## Table of Contents
 - [Installation](#installation)
 - [Why Resile?](#why-resile)
+- [Examples](#examples)
 - [Common Use Cases](#common-use-cases)
   - [Simple Retries](#1-simple-retries)
   - [Value-Yielding Retries (Generics)](#2-value-yielding-retries-generics)
@@ -43,6 +44,17 @@ In distributed systems, transient failures are a mathematical certainty. Resile 
 - **Context-Aware**: Strictly respects `context.Context` cancellation and deadlines.
 - **Zero-Dependency Core**: The core library only depends on the Go standard library.
 - **Opinionated Defaults**: Sensible production-ready defaults (5 attempts, exponential backoff).
+
+---
+
+## Examples
+
+The [examples/](examples/) directory contains standalone programs showing how to use Resile in various scenarios:
+
+- **[Basic Retry](examples/basic/main.go)**: Simple `Do` and `DoErr` calls.
+- **[HTTP with Rate Limits](examples/http/main.go)**: Respecting `Retry-After` headers and using `slog`.
+- **[Stateful Rotation](examples/stateful/main.go)**: Rotating API endpoints using `RetryState`.
+- **[Circuit Breaker](examples/circuitbreaker/main.go)**: Layering defensive strategies.
 
 ---
 
