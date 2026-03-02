@@ -12,12 +12,12 @@ import (
 
 	"github.com/cinar/resile"
 	"go.opentelemetry.io/otel/metric/noop"
-	"go.opentelemetry.io/otel/trace"
+	tracenoop "go.opentelemetry.io/otel/trace/noop"
 )
 
 func TestOtelInstrumenter(t *testing.T) {
 	// Using no-op implementations for simplicity in unit test.
-	tp := trace.NewNoopTracerProvider()
+	tp := tracenoop.NewTracerProvider()
 	mp := noop.NewMeterProvider()
 
 	instr, err := New(tp, mp)
