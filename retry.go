@@ -30,6 +30,7 @@ type Config struct {
 	Policy         *retryPolicy
 	Instrumenter   Instrumenter
 	CircuitBreaker *circuit.Breaker
+	Fallback       any
 }
 
 // Do executes an action with retry logic using the provided options.
@@ -55,6 +56,12 @@ func DoState[T any](ctx context.Context, action func(context.Context, RetryState
 		return innerErr
 	})
 
+	if err != nil && c.Fallback != nil {
+		if f, ok := c.Fallback.(func(context.Context, error) (T, error)); ok {
+			return f(ctx, err)
+		}
+	}
+
 	return result, err
 }
 
@@ -72,7 +79,15 @@ func DoErrState(ctx context.Context, action func(context.Context, RetryState) er
 	for _, opt := range opts {
 		opt(c)
 	}
-	return c.execute(ctx, action)
+	err := c.execute(ctx, action)
+
+	if err != nil && c.Fallback != nil {
+		if f, ok := c.Fallback.(func(context.Context, error) error); ok {
+			return f(ctx, err)
+		}
+	}
+
+	return err
 }
 
 // New returns a new Retryer pre-configured with the provided options.

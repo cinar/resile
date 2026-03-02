@@ -19,9 +19,10 @@
   - [Value-Yielding Retries (Generics)](#2-value-yielding-retries-generics)
   - [Stateful Retries & Endpoint Rotation](#3-stateful-retries--endpoint-rotation)
   - [Handling Rate Limits (Retry-After)](#4-handling-rate-limits-retry-after)
-  - [Layered Defense with Circuit Breaker](#5-layered-defense-with-circuit-breaker)
-  - [Structured Logging & Telemetry](#6-structured-logging--telemetry)
-  - [Fast Unit Testing](#7-fast-unit-testing)
+  - [Fallback Strategies](#5-fallback-strategies)
+  - [Layered Defense with Circuit Breaker](#6-layered-defense-with-circuit-breaker)
+  - [Structured Logging & Telemetry](#7-structured-logging--telemetry)
+  - [Fast Unit Testing](#8-fast-unit-testing)
 - [Configuration Reference](#configuration-reference)
 - [Architecture & Design](#architecture--design)
 - [License](#license)
@@ -53,6 +54,7 @@ The [examples/](examples/) directory contains standalone programs showing how to
 
 - **[Basic Retry](examples/basic/main.go)**: Simple `Do` and `DoErr` calls.
 - **[HTTP with Rate Limits](examples/http/main.go)**: Respecting `Retry-After` headers and using `slog`.
+- **[Fallback Strategies](examples/fallback/main.go)**: Returning stale data when all attempts fail.
 - **[Stateful Rotation](examples/stateful/main.go)**: Rotating API endpoints using `RetryState`.
 - **[Circuit Breaker](examples/circuitbreaker/main.go)**: Layering defensive strategies.
 
@@ -108,7 +110,20 @@ func (e *RateLimitError) RetryAfter() time.Duration {
 // Resile will sleep exactly until WaitUntil when this error is encountered.
 ```
 
-### 5. Layered Defense with Circuit Breaker
+### 5. Fallback Strategies
+Provide a fallback function to handle cases where all retries are exhausted or the circuit breaker is open. This is useful for returning stale data or default values.
+
+```go
+data, err := resile.Do(ctx, fetchData,
+    resile.WithMaxAttempts(3),
+    resile.WithFallback(func(ctx context.Context, err error) (string, error) {
+        // Return stale data from cache if the primary fetch fails
+        return cache.Get(ctx, key), nil 
+    }),
+)
+```
+
+### 6. Layered Defense with Circuit Breaker
 Combine retries (for transient blips) with a circuit breaker (for systemic outages).
 
 ```go
@@ -123,7 +138,7 @@ cb := circuit.New(circuit.Config{
 err := resile.DoErr(ctx, action, resile.WithCircuitBreaker(cb))
 ```
 
-### 6. Structured Logging & Telemetry
+### 7. Structured Logging & Telemetry
 Integrate with `slog` or `OpenTelemetry` without bloating your core dependencies.
 
 ```go
@@ -136,7 +151,7 @@ resile.Do(ctx, action,
 )
 ```
 
-### 7. Fast Unit Testing
+### 8. Fast Unit Testing
 Never let retry timers slow down your CI. Use `WithTestingBypass` to make all retries execute instantly.
 
 ```go
@@ -162,6 +177,8 @@ func TestMyService(t *testing.T) {
 | `WithRetryIfFunc(func)` | Custom logic to decide if an error is retriable. | `nil` |
 | `WithCircuitBreaker(cb)` | Attaches a circuit breaker state machine. | `nil` |
 | `WithInstrumenter(inst)` | Attaches telemetry (slog/OTel/Prometheus). | `nil` |
+| `WithFallback(f)` | Sets a generic fallback function. | `nil` |
+| `WithFallbackErr(f)` | Sets a fallback function for error-only actions. | `nil` |
 
 ---
 

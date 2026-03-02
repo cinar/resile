@@ -56,6 +56,9 @@ func TestRetryPolicy_ShouldRetry(t *testing.T) {
 
 	t.Run("DefaultPolicy", func(t *testing.T) {
 		policy := &retryPolicy{}
+		if policy.shouldRetry(nil) {
+			t.Error("shouldRetry(nil) should be false")
+		}
 		if !policy.shouldRetry(errTest) {
 			t.Error("expected default policy to retry errors")
 		}
