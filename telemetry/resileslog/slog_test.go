@@ -49,6 +49,24 @@ func TestSlogInstrumenter(t *testing.T) {
 	}
 }
 
+func TestSlogInstrumenter_WithName(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	instr := New(logger)
+
+	ctx := context.Background()
+	state := resile.RetryState{
+		Name:      "test-op",
+		LastError: context.DeadlineExceeded,
+	}
+
+	instr.AfterAttempt(ctx, state)
+	output := buf.String()
+	if !contains(output, `"retry.name":"test-op"`) {
+		t.Errorf("expected retry.name in log: %s", output)
+	}
+}
+
 func TestSlogInstrumenter_BeforeAttempt(t *testing.T) {
 	instr := New(slog.Default())
 	ctx := context.Background()

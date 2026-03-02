@@ -5,6 +5,7 @@
 package resile
 
 import (
+	"context"
 	"time"
 
 	"github.com/cinar/resile/circuit"
@@ -12,6 +13,21 @@ import (
 
 // Option defines a functional option for configuring a retry execution.
 type Option func(*Config)
+
+// WithFallback sets a function to be called if all retries are exhausted or if the circuit breaker is open.
+// T must match the return type of the retry action.
+func WithFallback[T any](f func(context.Context, error) (T, error)) Option {
+	return func(c *Config) {
+		c.Fallback = f
+	}
+}
+
+// WithFallbackErr sets a fallback function for operations that only return an error.
+func WithFallbackErr(f func(context.Context, error) error) Option {
+	return func(c *Config) {
+		c.Fallback = f
+	}
+}
 
 // WithName sets the name for the operation. This is used in telemetry labels.
 func WithName(name string) Option {

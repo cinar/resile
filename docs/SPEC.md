@@ -209,6 +209,16 @@ A standard Circuit Breaker operates as a state machine transitioning between thr
 
 By intelligently wrapping the circuit breaker logic around the execution closure within the retry loop, the library orchestrates a comprehensive layered resilience strategy. The Circuit Breaker protects the downstream infrastructure from overload during catastrophic failure, while the Retry logic protects the upstream client from minor, acceptable network blips.54
 
+## **Policy Composition and Fallbacks**
+
+The final layer of a sophisticated resilience strategy is the implementation of Fallbacks. While retries handle transient errors and circuit breakers prevent systemic overload, a fallback provides a deterministic path for "graceful degradation." In a distributed system, returning a partial or stale result is often infinitely preferable to returning a hard error to the end-user.
+
+The architecture permits users to register a `FallbackFunc` via functional options. This function is automatically invoked by the execution engine if:
+1.  **Exhaustion**: All configured retry attempts have been depleted without success.
+2.  **Short-Circuiting**: The associated Circuit Breaker is in the `Open` state, preventing any attempt.
+
+By utilizing Go's type parameters, the library ensures that the fallback function's return signature matches the primary action's signature. This allows developers to seamlessly implement patterns such as returning stale data from a local Redis cache when a primary database query fails, or returning a default configuration when a remote configuration service is unreachable. This composition of Retry, Circuit Breaker, and Fallback transforms a brittle network call into a robust, multi-layered defensive operation.
+
 ## **Testing Strategies and Contextual Overrides**
 
 A frequent, highly disruptive pain point encountered when implementing robust retry libraries is the adverse effect they have on automated unit testing suites. If a library is configured for production with a base delay of 2 seconds and a maximum of 5 attempts, a single failing test simulating a network outage incurs an unacceptable 10-second penalty.22 Across a massive monorepo, these sleep timers compound, devastating Continuous Integration (CI) pipeline speeds.22 Python's stamina elegantly resolves this exact issue by providing global bypass switches specifically designed to deactivate delays in test environments.6
@@ -281,8 +291,18 @@ type Config struct {
     MaxAttempts uint  
     BaseDelay   time.Duration  
     MaxDelay    time.Duration  
+    // Policy Composition and Fallbacks  
+    Fallback    any  
     // Extensible options...  
 }
+
+The library provides generic options for registering fallbacks:
+Go
+
+func WithFallback[T any](f func(context.Context, error) (T, error)) Option
+func WithFallbackErr(f func(context.Context, error) error) Option
+
+These options are stored as `any` within the configuration and utilize type assertions during execution to match the generic signature of the target action, ensuring type-safe results even when falling back to cached or default data.
 
 type Option func(\*Config)
 
