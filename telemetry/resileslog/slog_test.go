@@ -49,6 +49,25 @@ func TestSlogInstrumenter(t *testing.T) {
 	}
 }
 
+func TestSlogInstrumenter_BeforeAttempt(t *testing.T) {
+	instr := New(slog.Default())
+	ctx := context.Background()
+	newCtx := instr.BeforeAttempt(ctx, resile.RetryState{})
+	if newCtx != ctx {
+		t.Error("BeforeAttempt should return the original context")
+	}
+}
+
+func TestSlogInstrumenter_AfterAttempt_Success(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	instr := New(logger)
+	instr.AfterAttempt(context.Background(), resile.RetryState{LastError: nil})
+	if buf.Len() > 0 {
+		t.Error("AfterAttempt should not log on success")
+	}
+}
+
 func contains(s, substr string) bool {
 	return bytes.Contains([]byte(s), []byte(substr))
 }

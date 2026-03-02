@@ -296,6 +296,35 @@ func TestDo_WithName(t *testing.T) {
 	}
 }
 
+func TestRetryerInterface(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	retryer := New(WithMaxAttempts(2), WithBaseDelay(0))
+
+	t.Run("Retryer_Do", func(t *testing.T) {
+		var count int
+		_, _ = retryer.Do(ctx, func(ctx context.Context) (any, error) {
+			count++
+			return nil, errTest
+		})
+		if count != 2 {
+			t.Errorf("expected 2 attempts, got %d", count)
+		}
+	})
+
+	t.Run("Retryer_DoErr", func(t *testing.T) {
+		var count int
+		_ = retryer.DoErr(ctx, func(ctx context.Context) error {
+			count++
+			return errTest
+		})
+		if count != 2 {
+			t.Errorf("expected 2 attempts, got %d", count)
+		}
+	})
+}
+
 type nameCaptureInstrumenter struct {
 	name *string
 }

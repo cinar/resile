@@ -10,6 +10,16 @@ import (
 	"time"
 )
 
+func TestBreaker_Defaults(t *testing.T) {
+	cb := New(Config{})
+	if cb.config.FailureThreshold != 5 {
+		t.Errorf("expected 5, got %d", cb.config.FailureThreshold)
+	}
+	if cb.config.ResetTimeout != 60*time.Second {
+		t.Errorf("expected 60s, got %v", cb.config.ResetTimeout)
+	}
+}
+
 func TestBreaker_Transitions(t *testing.T) {
 	config := Config{
 		FailureThreshold: 2,
