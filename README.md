@@ -106,7 +106,7 @@ data, err := resile.DoState(ctx, func(ctx context.Context, state resile.RetrySta
 })
 ```
 
-### 4. Handling Rate Limits (Retry-After)
+### 5. Handling Rate Limits (Retry-After)
 Resile automatically detects if an error implements `RetryAfterError` and overrides the jittered backoff with the server-dictated duration.
 
 ```go
@@ -122,7 +122,7 @@ func (e *RateLimitError) RetryAfter() time.Duration {
 // Resile will sleep exactly until WaitUntil when this error is encountered.
 ```
 
-### 5. Fallback Strategies
+### 6. Fallback Strategies
 Provide a fallback function to handle cases where all retries are exhausted or the circuit breaker is open. This is useful for returning stale data or default values.
 
 ```go
@@ -135,7 +135,7 @@ data, err := resile.Do(ctx, fetchData,
 )
 ```
 
-### 6. Layered Defense with Circuit Breaker
+### 7. Layered Defense with Circuit Breaker
 Combine retries (for transient blips) with a circuit breaker (for systemic outages).
 
 ```go
@@ -150,7 +150,7 @@ cb := circuit.New(circuit.Config{
 err := resile.DoErr(ctx, action, resile.WithCircuitBreaker(cb))
 ```
 
-### 7. Structured Logging & Telemetry
+### 8. Structured Logging & Telemetry
 Integrate with `slog` or `OpenTelemetry` without bloating your core dependencies.
 
 ```go
@@ -163,7 +163,7 @@ resile.Do(ctx, action,
 )
 ```
 
-### 8. Fast Unit Testing
+### 9. Fast Unit Testing
 Never let retry timers slow down your CI. Use `WithTestingBypass` to make all retries execute instantly.
 
 ```go

@@ -7,6 +7,7 @@ package resile
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/cinar/resile/circuit"
@@ -86,9 +87,14 @@ func DoStateHedged[T any](ctx context.Context, action func(context.Context, Retr
 	}
 
 	var result T
+	var once sync.Once
 	err := c.executeHedged(ctx, func(innerCtx context.Context, state RetryState) error {
-		var innerErr error
-		result, innerErr = action(innerCtx, state)
+		val, innerErr := action(innerCtx, state)
+		if innerErr == nil {
+			once.Do(func() {
+				result = val
+			})
+		}
 		return innerErr
 	})
 
