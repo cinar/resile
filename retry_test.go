@@ -334,3 +334,142 @@ func (n *nameCaptureInstrumenter) BeforeAttempt(ctx context.Context, state Retry
 	return ctx
 }
 func (n *nameCaptureInstrumenter) AfterAttempt(ctx context.Context, state RetryState) {}
+
+func TestDoHedged_SuccessFirstAttempt(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	var count int
+	val, err := DoHedged(ctx, func(ctx context.Context) (string, error) {
+		count++
+		return "ok", nil
+	}, WithMaxAttempts(3), WithHedgingDelay(50*time.Millisecond))
+
+	if err != nil {
+		t.Errorf("expected nil error, got %v", err)
+	}
+	if val != "ok" {
+		t.Errorf("expected 'ok', got %q", val)
+	}
+	if count != 1 {
+		t.Errorf("expected 1 attempt, got %d", count)
+	}
+}
+
+func TestDoHedged_SpeculativeSuccess(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	var count int
+	start := time.Now()
+	val, err := DoHedged(ctx, func(ctx context.Context) (string, error) {
+		count++
+		attempt := count
+		if attempt == 1 {
+			// First attempt is slow.
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(200 * time.Millisecond):
+				return "too-slow", nil
+			}
+		}
+		// Second attempt is fast.
+		return "fast-ok", nil
+	}, WithMaxAttempts(3), WithHedgingDelay(50*time.Millisecond))
+
+	duration := time.Since(start)
+
+	if err != nil {
+		t.Errorf("expected nil error, got %v", err)
+	}
+	if val != "fast-ok" {
+		t.Errorf("expected 'fast-ok', got %q", val)
+	}
+	// It should take roughly HedgingDelay (50ms) + small execution time.
+	if duration > 150*time.Millisecond {
+		t.Errorf("expected fast speculative success, took %v", duration)
+	}
+	if count < 2 {
+		t.Errorf("expected at least 2 attempts, got %d", count)
+	}
+}
+
+func TestDoHedged_AllFail(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	var count int
+	_, err := DoHedged(ctx, func(ctx context.Context) (string, error) {
+		count++
+		return "", errTest
+	}, WithMaxAttempts(3), WithHedgingDelay(10*time.Millisecond))
+
+	if !errors.Is(err, errTest) {
+		t.Errorf("expected %v, got %v", errTest, err)
+	}
+	if count != 3 {
+		t.Errorf("expected 3 attempts, got %d", count)
+	}
+}
+
+func TestDoHedged_FatalError(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	var count int
+	_, err := DoHedged(ctx, func(ctx context.Context) (string, error) {
+		count++
+		if count == 1 {
+			return "", FatalError(errTest)
+		}
+		return "", errOther
+	}, WithMaxAttempts(3), WithHedgingDelay(10*time.Millisecond))
+
+	if !errors.Is(err, errTest) {
+		t.Errorf("expected %v, got %v", errTest, err)
+	}
+	// Note: since it's concurrent, count might be 1 or slightly more if others started before cancellation.
+}
+
+func TestDoErrHedged_Success(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	err := DoErrHedged(ctx, func(ctx context.Context) error {
+		return nil
+	}, WithMaxAttempts(3), WithHedgingDelay(50*time.Millisecond))
+
+	if err != nil {
+		t.Errorf("expected nil error, got %v", err)
+	}
+}
+
+func TestRetryerInterface_Hedged(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	retryer := New(WithMaxAttempts(2), WithHedgingDelay(0))
+
+	t.Run("Retryer_DoHedged", func(t *testing.T) {
+		var count int
+		_, _ = retryer.DoHedged(ctx, func(ctx context.Context) (any, error) {
+			count++
+			return nil, errTest
+		})
+		if count != 2 {
+			t.Errorf("expected 2 attempts, got %d", count)
+		}
+	})
+
+	t.Run("Retryer_DoErrHedged", func(t *testing.T) {
+		var count int
+		_ = retryer.DoErrHedged(ctx, func(ctx context.Context) error {
+			count++
+			return errTest
+		})
+		if count != 2 {
+			t.Errorf("expected 2 attempts, got %d", count)
+		}
+	})
+}

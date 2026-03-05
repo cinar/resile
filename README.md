@@ -17,12 +17,13 @@
 - [Common Use Cases](#common-use-cases)
   - [Simple Retries](#1-simple-retries)
   - [Value-Yielding Retries (Generics)](#2-value-yielding-retries-generics)
-  - [Stateful Retries & Endpoint Rotation](#3-stateful-retries--endpoint-rotation)
-  - [Handling Rate Limits (Retry-After)](#4-handling-rate-limits-retry-after)
-  - [Fallback Strategies](#5-fallback-strategies)
-  - [Layered Defense with Circuit Breaker](#6-layered-defense-with-circuit-breaker)
-  - [Structured Logging & Telemetry](#7-structured-logging--telemetry)
-  - [Fast Unit Testing](#8-fast-unit-testing)
+  - [Request Hedging (Speculative Retries)](#3-request-hedging-speculative-retries)
+  - [Stateful Retries & Endpoint Rotation](#4-stateful-retries--endpoint-rotation)
+  - [Handling Rate Limits (Retry-After)](#5-handling-rate-limits-retry-after)
+  - [Fallback Strategies](#6-fallback-strategies)
+  - [Layered Defense with Circuit Breaker](#7-layered-defense-with-circuit-breaker)
+  - [Structured Logging & Telemetry](#8-structured-logging--telemetry)
+  - [Fast Unit Testing](#9-fast-unit-testing)
 - [Configuration Reference](#configuration-reference)
 - [Architecture & Design](#architecture--design)
 - [License](#license)
@@ -53,6 +54,7 @@ In distributed systems, transient failures are a mathematical certainty. Resile 
 The [examples/](examples/) directory contains standalone programs showing how to use Resile in various scenarios:
 
 - **[Basic Retry](examples/basic/main.go)**: Simple `Do` and `DoErr` calls.
+- **[Request Hedging](examples/hedging/main.go)**: Reducing tail latency with speculative retries.
 - **[HTTP with Rate Limits](examples/http/main.go)**: Respecting `Retry-After` headers and using `slog`.
 - **[Fallback Strategies](examples/fallback/main.go)**: Returning stale data when all attempts fail.
 - **[Stateful Rotation](examples/stateful/main.go)**: Rotating API endpoints using `RetryState`.
@@ -81,7 +83,17 @@ user, err := resile.Do(ctx, func(ctx context.Context) (*User, error) {
 }, resile.WithMaxAttempts(3))
 ```
 
-### 3. Stateful Retries & Endpoint Rotation
+### 3. Request Hedging (Speculative Retries)
+Speculative retries reduce tail latency by starting a second request if the first one doesn't finish within a configured `HedgingDelay`. The first successful result is used, and the other is cancelled.
+
+```go
+data, err := resile.DoHedged(ctx, action, 
+    resile.WithMaxAttempts(3),
+    resile.WithHedgingDelay(100 * time.Millisecond),
+)
+```
+
+### 4. Stateful Retries & Endpoint Rotation
 Use `DoState` to access the `RetryState`, allowing you to rotate endpoints or fallback logic based on the failure history.
 
 ```go
@@ -173,6 +185,7 @@ func TestMyService(t *testing.T) {
 | `WithMaxAttempts(uint)` | Total number of attempts (initial + retries). | `5` |
 | `WithBaseDelay(duration)` | Initial backoff duration. | `100ms` |
 | `WithMaxDelay(duration)` | Maximum possible backoff duration. | `30s` |
+| `WithHedgingDelay(duration)`| Delay before speculative retries. | `0` |
 | `WithRetryIf(error)` | Only retry if `errors.Is(err, target)`. | All non-fatal |
 | `WithRetryIfFunc(func)` | Custom logic to decide if an error is retriable. | `nil` |
 | `WithCircuitBreaker(cb)` | Attaches a circuit breaker state machine. | `nil` |

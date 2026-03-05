@@ -94,4 +94,11 @@ func TestOptions(t *testing.T) {
 			t.Error("expected custom circuit breaker")
 		}
 	})
+
+	t.Run("WithHedgingDelay", func(t *testing.T) {
+		WithHedgingDelay(50 * time.Millisecond)(c)
+		if c.HedgingDelay != 50*time.Millisecond {
+			t.Errorf("expected 50ms, got %v", c.HedgingDelay)
+		}
+	})
 }
