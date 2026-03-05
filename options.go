@@ -98,3 +98,11 @@ func WithCircuitBreaker(cb *circuit.Breaker) Option {
 		c.CircuitBreaker = cb
 	}
 }
+
+// WithHedgingDelay sets the delay for speculative retries (hedging).
+// If a response doesn't arrive within this delay, another attempt is started concurrently.
+func WithHedgingDelay(delay time.Duration) Option {
+	return func(c *Config) {
+		c.HedgingDelay = delay
+	}
+}

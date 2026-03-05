@@ -7,6 +7,7 @@ package resile
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/cinar/resile/circuit"
@@ -16,8 +17,12 @@ import (
 type Retryer interface {
 	// Do executes a function that returns a value and an error.
 	Do(ctx context.Context, action func(context.Context) (any, error)) (any, error)
+	// DoHedged executes a function using speculative retries (hedging).
+	DoHedged(ctx context.Context, action func(context.Context) (any, error)) (any, error)
 	// DoErr executes a function that returns only an error.
 	DoErr(ctx context.Context, action func(context.Context) error) error
+	// DoErrHedged executes a function using speculative retries (hedging).
+	DoErrHedged(ctx context.Context, action func(context.Context) error) error
 }
 
 // Config represents the configuration for the retry execution.
@@ -26,6 +31,7 @@ type Config struct {
 	MaxAttempts    uint
 	BaseDelay      time.Duration
 	MaxDelay       time.Duration
+	HedgingDelay   time.Duration
 	Backoff        Backoff
 	Policy         *retryPolicy
 	Instrumenter   Instrumenter
@@ -37,6 +43,14 @@ type Config struct {
 // This generic function handles functions returning (T, error).
 func Do[T any](ctx context.Context, action func(context.Context) (T, error), opts ...Option) (T, error) {
 	return DoState(ctx, func(innerCtx context.Context, _ RetryState) (T, error) {
+		return action(innerCtx)
+	}, opts...)
+}
+
+// DoHedged executes an action using speculative retries (hedging).
+// It starts multiple attempts concurrently if previous ones take too long.
+func DoHedged[T any](ctx context.Context, action func(context.Context) (T, error), opts ...Option) (T, error) {
+	return DoStateHedged(ctx, func(innerCtx context.Context, _ RetryState) (T, error) {
 		return action(innerCtx)
 	}, opts...)
 }
@@ -65,10 +79,45 @@ func DoState[T any](ctx context.Context, action func(context.Context, RetryState
 	return result, err
 }
 
+// DoStateHedged executes a stateful action with speculative retries (hedging).
+func DoStateHedged[T any](ctx context.Context, action func(context.Context, RetryState) (T, error), opts ...Option) (T, error) {
+	c := DefaultConfig()
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	var result T
+	var once sync.Once
+	err := c.executeHedged(ctx, func(innerCtx context.Context, state RetryState) error {
+		val, innerErr := action(innerCtx, state)
+		if innerErr == nil {
+			once.Do(func() {
+				result = val
+			})
+		}
+		return innerErr
+	})
+
+	if err != nil && c.Fallback != nil {
+		if f, ok := c.Fallback.(func(context.Context, error) (T, error)); ok {
+			return f(ctx, err)
+		}
+	}
+
+	return result, err
+}
+
 // DoErr executes an action with retry logic using the provided options.
 // This function handles functions returning only error.
 func DoErr(ctx context.Context, action func(context.Context) error, opts ...Option) error {
 	return DoErrState(ctx, func(innerCtx context.Context, _ RetryState) error {
+		return action(innerCtx)
+	}, opts...)
+}
+
+// DoErrHedged executes an action using speculative retries (hedging).
+func DoErrHedged(ctx context.Context, action func(context.Context) error, opts ...Option) error {
+	return DoErrStateHedged(ctx, func(innerCtx context.Context, _ RetryState) error {
 		return action(innerCtx)
 	}, opts...)
 }
@@ -80,6 +129,23 @@ func DoErrState(ctx context.Context, action func(context.Context, RetryState) er
 		opt(c)
 	}
 	err := c.execute(ctx, action)
+
+	if err != nil && c.Fallback != nil {
+		if f, ok := c.Fallback.(func(context.Context, error) error); ok {
+			return f(ctx, err)
+		}
+	}
+
+	return err
+}
+
+// DoErrStateHedged executes a stateful action with speculative retries (hedging).
+func DoErrStateHedged(ctx context.Context, action func(context.Context, RetryState) error, opts ...Option) error {
+	c := DefaultConfig()
+	for _, opt := range opts {
+		opt(c)
+	}
+	err := c.executeHedged(ctx, action)
 
 	if err != nil && c.Fallback != nil {
 		if f, ok := c.Fallback.(func(context.Context, error) error); ok {
@@ -107,9 +173,23 @@ func (c *Config) Do(ctx context.Context, action func(context.Context) (any, erro
 	})
 }
 
+// DoHedged satisfies the Retryer interface.
+func (c *Config) DoHedged(ctx context.Context, action func(context.Context) (any, error)) (any, error) {
+	return DoHedged(ctx, action, func(config *Config) {
+		*config = *c // Copy existing config
+	})
+}
+
 // DoErr satisfies the Retryer interface.
 func (c *Config) DoErr(ctx context.Context, action func(context.Context) error) error {
 	return DoErr(ctx, action, func(config *Config) {
+		*config = *c // Copy existing config
+	})
+}
+
+// DoErrHedged satisfies the Retryer interface.
+func (c *Config) DoErrHedged(ctx context.Context, action func(context.Context) error) error {
+	return DoErrHedged(ctx, action, func(config *Config) {
 		*config = *c // Copy existing config
 	})
 }
@@ -185,6 +265,100 @@ func (c *Config) execute(ctx context.Context, action doAction) error {
 		if err := sleep(ctx, delay); err != nil {
 			// Context canceled during sleep.
 			return errors.Join(lastErr, err)
+		}
+	}
+
+	return lastErr
+}
+
+// executeHedged executes the action using speculative retries (hedging).
+func (c *Config) executeHedged(ctx context.Context, action doAction) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	results := make(chan error, c.MaxAttempts)
+	var lastErr error
+	var inFlight int
+	var attemptsStarted uint
+
+	start := time.Now()
+
+	for {
+		if attemptsStarted < c.MaxAttempts {
+			attempt := attemptsStarted
+			attemptsStarted++
+			inFlight++
+			go func(a uint) {
+				state := RetryState{
+					Name:          c.Name,
+					Attempt:       a,
+					MaxAttempts:   c.MaxAttempts,
+					TotalDuration: time.Since(start),
+					NextDelay:     c.HedgingDelay,
+				}
+
+				var err error
+				if c.CircuitBreaker != nil {
+					err = c.CircuitBreaker.Execute(func() error {
+						return c.executeOnce(ctx, action, state)
+					})
+				} else {
+					err = c.executeOnce(ctx, action, state)
+				}
+
+				select {
+				case results <- err:
+				case <-ctx.Done():
+				}
+			}(attempt)
+		}
+
+		if attemptsStarted >= c.MaxAttempts && inFlight == 0 {
+			break
+		}
+
+		var timerCh <-chan time.Time
+		var timer *time.Timer
+		if attemptsStarted < c.MaxAttempts {
+			timer = time.NewTimer(c.HedgingDelay)
+			timerCh = timer.C
+		}
+
+		select {
+		case <-ctx.Done():
+			if timer != nil {
+				timer.Stop()
+			}
+			return ctx.Err()
+		case err := <-results:
+			if timer != nil {
+				timer.Stop()
+			}
+			inFlight--
+			if err == nil {
+				cancel()
+				return nil
+			}
+			lastErr = err
+
+			// Check for circuit open to avoid further retries.
+			if errors.Is(lastErr, circuit.ErrCircuitOpen) {
+				cancel()
+				return lastErr
+			}
+
+			// If error is not retryable, cancel all and return.
+			if !c.Policy.shouldRetry(lastErr) {
+				cancel()
+				return lastErr
+			}
+
+			// If no more attempts are in-flight, start next one immediately.
+			if inFlight == 0 && attemptsStarted < c.MaxAttempts {
+				continue
+			}
+		case <-timerCh:
+			// Hedging delay reached, start next attempt if available.
 		}
 	}
 

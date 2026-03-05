@@ -7,6 +7,7 @@ package resile
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -334,3 +335,141 @@ func (n *nameCaptureInstrumenter) BeforeAttempt(ctx context.Context, state Retry
 	return ctx
 }
 func (n *nameCaptureInstrumenter) AfterAttempt(ctx context.Context, state RetryState) {}
+
+func TestDoHedged_SuccessFirstAttempt(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	var count int32
+	val, err := DoHedged(ctx, func(ctx context.Context) (string, error) {
+		atomic.AddInt32(&count, 1)
+		return "ok", nil
+	}, WithMaxAttempts(3), WithHedgingDelay(50*time.Millisecond))
+
+	if err != nil {
+		t.Errorf("expected nil error, got %v", err)
+	}
+	if val != "ok" {
+		t.Errorf("expected 'ok', got %q", val)
+	}
+	if atomic.LoadInt32(&count) != 1 {
+		t.Errorf("expected 1 attempt, got %d", count)
+	}
+}
+
+func TestDoHedged_SpeculativeSuccess(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	var count int32
+	start := time.Now()
+	val, err := DoHedged(ctx, func(ctx context.Context) (string, error) {
+		attempt := atomic.AddInt32(&count, 1)
+		if attempt == 1 {
+			// First attempt is slow.
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(200 * time.Millisecond):
+				return "too-slow", nil
+			}
+		}
+		// Second attempt is fast.
+		return "fast-ok", nil
+	}, WithMaxAttempts(3), WithHedgingDelay(50*time.Millisecond))
+
+	duration := time.Since(start)
+
+	if err != nil {
+		t.Errorf("expected nil error, got %v", err)
+	}
+	if val != "fast-ok" {
+		t.Errorf("expected 'fast-ok', got %q", val)
+	}
+	// It should take roughly HedgingDelay (50ms) + small execution time.
+	if duration > 150*time.Millisecond {
+		t.Errorf("expected fast speculative success, took %v", duration)
+	}
+	if atomic.LoadInt32(&count) < 2 {
+		t.Errorf("expected at least 2 attempts, got %d", count)
+	}
+}
+
+func TestDoHedged_AllFail(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	var count int32
+	_, err := DoHedged(ctx, func(ctx context.Context) (string, error) {
+		atomic.AddInt32(&count, 1)
+		return "", errTest
+	}, WithMaxAttempts(3), WithHedgingDelay(10*time.Millisecond))
+
+	if !errors.Is(err, errTest) {
+		t.Errorf("expected %v, got %v", errTest, err)
+	}
+	if atomic.LoadInt32(&count) != 3 {
+		t.Errorf("expected 3 attempts, got %d", count)
+	}
+}
+
+func TestDoHedged_FatalError(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	var count int32
+	_, err := DoHedged(ctx, func(ctx context.Context) (string, error) {
+		attempt := atomic.AddInt32(&count, 1)
+		if attempt == 1 {
+			return "", FatalError(errTest)
+		}
+		return "", errOther
+	}, WithMaxAttempts(3), WithHedgingDelay(10*time.Millisecond))
+
+	if !errors.Is(err, errTest) {
+		t.Errorf("expected %v, got %v", errTest, err)
+	}
+	// Note: since it's concurrent, count might be 1 or slightly more if others started before cancellation.
+}
+
+func TestDoErrHedged_Success(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	err := DoErrHedged(ctx, func(ctx context.Context) error {
+		return nil
+	}, WithMaxAttempts(3), WithHedgingDelay(50*time.Millisecond))
+
+	if err != nil {
+		t.Errorf("expected nil error, got %v", err)
+	}
+}
+
+func TestRetryerInterface_Hedged(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	retryer := New(WithMaxAttempts(2), WithHedgingDelay(0))
+
+	t.Run("Retryer_DoHedged", func(t *testing.T) {
+		var count int32
+		_, _ = retryer.DoHedged(ctx, func(ctx context.Context) (any, error) {
+			atomic.AddInt32(&count, 1)
+			return nil, errTest
+		})
+		if atomic.LoadInt32(&count) != 2 {
+			t.Errorf("expected 2 attempts, got %d", atomic.LoadInt32(&count))
+		}
+	})
+
+	t.Run("Retryer_DoErrHedged", func(t *testing.T) {
+		var count int32
+		_ = retryer.DoErrHedged(ctx, func(ctx context.Context) error {
+			atomic.AddInt32(&count, 1)
+			return errTest
+		})
+		if atomic.LoadInt32(&count) != 2 {
+			t.Errorf("expected 2 attempts, got %d", atomic.LoadInt32(&count))
+		}
+	})
+}
