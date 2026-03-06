@@ -20,11 +20,16 @@
   - [Request Hedging (Speculative Retries)](#3-request-hedging-speculative-retries)
   - [Stateful Retries & Endpoint Rotation](#4-stateful-retries--endpoint-rotation)
   - [Handling Rate Limits (Retry-After)](#5-handling-rate-limits-retry-after)
-  - [Fallback Strategies](#6-fallback-strategies)
-  - [Layered Defense with Circuit Breaker](#7-layered-defense-with-circuit-breaker)
-  - [Macro-Level Protection (Adaptive Retries)](#8-macro-level-protection-adaptive-retries)
-  - [Structured Logging & Telemetry](#9-structured-logging--telemetry)
-  - [Fast Unit Testing](#10-fast-unit-testing)
+  - [Aborting Retries (Pushback Signal)](#6-aborting-retries-pushback-signal)
+  - [Fallback Strategies](#7-fallback-strategies)
+  - [Layered Defense with Circuit Breaker](#8-layered-defense-with-circuit-breaker)
+  - [Macro-Level Protection (Adaptive Retries)](#9-macro-level-protection-adaptive-retries)
+  - [Structured Logging & Telemetry](#10-structured-logging--telemetry)
+  - [Panic Recovery ("Let It Crash")](#11-panic-recovery-let-it-crash)
+  - [Fast Unit Testing](#12-fast-unit-testing)
+  - [Reusable Clients & Dependency Injection](#13-reusable-clients--dependency-injection)
+  - [Marking Errors as Fatal](#14-marking-errors-as-fatal)
+  - [Custom Error Filtering](#15-custom-error-filtering)
 - [Configuration Reference](#configuration-reference)
 - [Architecture & Design](#architecture--design)
 - [License](#license)
@@ -92,14 +97,21 @@ user, err := resile.Do(ctx, func(ctx context.Context) (*User, error) {
 Speculative retries reduce tail latency by starting a second request if the first one doesn't finish within a configured `HedgingDelay`. The first successful result is used, and the other is cancelled.
 
 ```go
+// For value-yielding operations
 data, err := resile.DoHedged(ctx, action, 
     resile.WithMaxAttempts(3),
     resile.WithHedgingDelay(100 * time.Millisecond),
 )
+
+// For error-only operations
+err := resile.DoErrHedged(ctx, action,
+    resile.WithMaxAttempts(2),
+    resile.WithHedgingDelay(50 * time.Millisecond),
+)
 ```
 
 ### 4. Stateful Retries & Endpoint Rotation
-Use `DoState` to access the `RetryState`, allowing you to rotate endpoints or fallback logic based on the failure history.
+Use `DoState` (or `DoErrState`) to access the `RetryState`, allowing you to rotate endpoints or fallback logic based on the failure history.
 
 ```go
 endpoints := []string{"api-v1.example.com", "api-v2.example.com"}
@@ -131,7 +143,20 @@ func (e *RateLimitError) CancelAllRetries() bool {
 // Resile will sleep exactly until WaitUntil when this error is encountered.
 ```
 
-### 6. Fallback Strategies
+### 6. Aborting Retries (Pushback Signal)
+If a downstream service returns a terminal error (like "Quota Exceeded") that shouldn't be retried, implement `CancelAllRetries() bool` to abort the entire retry loop immediately.
+
+```go
+type QuotaExceededError struct{}
+func (e *QuotaExceededError) Error() string { return "quota exhausted" }
+func (e *QuotaExceededError) CancelAllRetries() bool { return true }
+
+// Resile will stop immediately if this error is encountered,
+// even if more attempts are remaining.
+_, err := resile.Do(ctx, action, resile.WithMaxAttempts(10))
+```
+
+### 7. Fallback Strategies
 Provide a fallback function to handle cases where all retries are exhausted or the circuit breaker is open. This is useful for returning stale data or default values.
 
 ```go
@@ -144,7 +169,7 @@ data, err := resile.Do(ctx, fetchData,
 )
 ```
 
-### 7. Layered Defense with Circuit Breaker
+### 8. Layered Defense with Circuit Breaker
 Combine retries (for transient blips) with a circuit breaker (for systemic outages).
 
 ```go
@@ -159,7 +184,7 @@ cb := circuit.New(circuit.Config{
 err := resile.DoErr(ctx, action, resile.WithCircuitBreaker(cb))
 ```
 
-### 8. Macro-Level Protection (Adaptive Retries)
+### 9. Macro-Level Protection (Adaptive Retries)
 Prevent "retry storms" by using a token bucket that is shared across your entire cluster of clients. If the downstream service is degraded, the bucket will quickly deplete, causing clients to fail fast locally instead of hammering the service.
 
 ```go
@@ -169,7 +194,7 @@ bucket := resile.DefaultAdaptiveBucket()
 err := resile.DoErr(ctx, action, resile.WithAdaptiveBucket(bucket))
 ```
 
-### 9. Structured Logging & Telemetry
+### 10. Structured Logging & Telemetry
 Integrate with `slog` or `OpenTelemetry` without bloating your core dependencies.
 
 ```go
@@ -182,7 +207,7 @@ resile.Do(ctx, action,
 )
 ```
 
-### 10. Panic Recovery ("Let It Crash")
+### 11. Panic Recovery ("Let It Crash")
 Convert unexpected Go panics into retryable errors, allowing your application to reset to a known good state without a hard crash.
 
 ```go
@@ -192,7 +217,7 @@ val, err := resile.Do(ctx, riskyAction,
 )
 ```
 
-### 11. Fast Unit Testing
+### 12. Fast Unit Testing
 Never let retry timers slow down your CI. Use `WithTestingBypass` to make all retries execute instantly.
 
 ```go
@@ -202,6 +227,50 @@ func TestMyService(t *testing.T) {
     // This will retry 10 times instantly without sleeping.
     err := service.Handle(ctx)
 }
+```
+
+### 13. Reusable Clients & Dependency Injection
+Use `resile.New()` to create a `Retryer` interface for cleaner code architecture and easier testing.
+
+```go
+// Create a reusable resilience strategy
+retryer := resile.New(
+    resile.WithMaxAttempts(3),
+    resile.WithBaseDelay(200 * time.Millisecond),
+)
+
+// Use the interface to execute actions
+err := retryer.DoErr(ctx, func(ctx context.Context) error {
+    return service.Call(ctx)
+})
+```
+
+### 14. Marking Errors as Fatal
+Sometimes you know an error is terminal and shouldn't be retried (e.g., "Invalid API Key"). Use `resile.FatalError()` to abort the retry loop immediately.
+
+```go
+err := resile.DoErr(ctx, func(ctx context.Context) error {
+    err := client.Do()
+    if errors.Is(err, ErrAuthFailed) {
+        return resile.FatalError(err) // Stops retries immediately
+    }
+    return err
+})
+```
+
+### 15. Custom Error Filtering
+Control which errors trigger a retry using `WithRetryIf` (for exact matches) or `WithRetryIfFunc` (for custom logic like checking status codes).
+
+```go
+err := resile.DoErr(ctx, action,
+    // Only retry if the error is ErrConnReset
+    resile.WithRetryIf(ErrConnReset),
+    
+    // OR use a custom function for complex logic
+    resile.WithRetryIfFunc(func(err error) bool {
+        return errors.Is(err, ErrTransient) || isTimeout(err)
+    }),
+)
 ```
 
 ---
@@ -214,6 +283,7 @@ func TestMyService(t *testing.T) {
 | `WithMaxAttempts(uint)` | Total number of attempts (initial + retries). | `5` |
 | `WithBaseDelay(duration)` | Initial backoff duration. | `100ms` |
 | `WithMaxDelay(duration)` | Maximum possible backoff duration. | `30s` |
+| `WithBackoff(Backoff)` | Custom backoff algorithm (e.g. constant). | `Full Jitter` |
 | `WithHedgingDelay(duration)`| Delay before speculative retries. | `0` |
 | `WithRetryIf(error)` | Only retry if `errors.Is(err, target)`. | All non-fatal |
 | `WithRetryIfFunc(func)` | Custom logic to decide if an error is retriable. | `nil` |
