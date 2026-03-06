@@ -258,6 +258,9 @@ func (c *Config) execute(ctx context.Context, action doAction) error {
 		// Check for Retry-After override.
 		var retryAfter RetryAfterError
 		if errors.As(lastErr, &retryAfter) {
+			if retryAfter.CancelAllRetries() {
+				return lastErr
+			}
 			delay = retryAfter.RetryAfter()
 		}
 
@@ -343,6 +346,13 @@ func (c *Config) executeHedged(ctx context.Context, action doAction) error {
 
 			// Check for circuit open to avoid further retries.
 			if errors.Is(lastErr, circuit.ErrCircuitOpen) {
+				cancel()
+				return lastErr
+			}
+
+			// Check for pushback signal to cancel all retries.
+			var retryAfter RetryAfterError
+			if errors.As(lastErr, &retryAfter) && retryAfter.CancelAllRetries() {
 				cancel()
 				return lastErr
 			}
