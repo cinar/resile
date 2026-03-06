@@ -196,6 +196,32 @@ By providing auxiliary, optional sub-packages (e.g., resilience/otel and resilie
 * **OpenTelemetry Tracing**: The optional otel instrumenter creates a discrete span for each individual retry attempt.62 Following strict OpenTelemetry semantic conventions, it names the span generically (e.g., retry.attempt) and attaches high-cardinality attributes like retry.num, error.type, and retry.backoff\_duration.16 This granular tracing allows operators to visualize exactly how much latency in a request was caused by network transfer versus the sleep duration of the backoff algorithm.  
 * **Prometheus Metrics**: Mirroring the exact feature set of stamina, an optional Prometheus implementation provisions a highly specific counter metric named stamina\_retries\_total (or an equivalent domain name).16 This counter is incremented upon the initiation of every retry iteration. It utilizes labels corresponding to the execution callable name, the retry\_num, and the normalized error\_type.16 This aggregated telemetry provides Site Reliability Engineers (SREs) with actionable, dashboard-ready insights to identify precisely which downstream dependencies are triggering retry storms across the cluster.
 
+## **Process Resilience: The Erlang "Let It Crash" Philosophy**
+
+Distributed systems must be resilient not only to transient network errors but also to unexpected internal state corruption. Drawing inspiration from Erlang/OTP, the library introduces the "Let It Crash" philosophy into the Go execution loop.
+
+While defensive programming attempts to handle every possible error case, it often results in complex, unreadable, and bug-prone logic. The "Let It Crash" approach advocates for allowing a process (or goroutine) to crash when it encounters an unexpected state, and then relying on a higher-level supervisor or recovery mechanism to reset the operation to a "known good" state.
+
+### **Implementation via Panic Recovery**
+
+The library facilitates this through an optional `WithPanicRecovery` mechanism. When enabled, the core execution wrappers (`Do`, `DoValue`) utilize a `defer recover()` block to intercept runtime panics.
+
+The recovered panic is transformed into a specialized `PanicError` struct, which captures the original panic value and the full stack trace:
+
+Go
+
+type PanicError struct {
+    Value      any
+    StackTrace string
+}
+
+By converting a panic into a standard error, the library allows the existing retry policies and circuit breakers to handle the failure. This ensures that:
+1. **Isolation**: A panic in a single transient operation does not terminate the entire Go process.
+2. **Observability**: Stack traces are captured and delivered to `Instrumenter` hooks for structured logging and tracing.
+3. **Recovery**: The exponential backoff and retry loop provides a natural "reset" interval, allowing the application to recover from transient state corruption before the next attempt.
+
+This architectural addition bridges the gap between simple request retries and the robust, self-healing process management seen in Erlang/OTP environments.
+
 ## **Macro-Level Protection: Adaptive Retries**
 
 Standard exponential backoff protects individual services from thundering herds, but it does not prevent a massive fleet of clients from continuously retrying against a system that is fundamentally degraded. To address this, the library implements "Adaptive Retries" inspired by modern cloud SDKs.

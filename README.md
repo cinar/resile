@@ -63,6 +63,7 @@ The [examples/](examples/) directory contains standalone programs showing how to
 - **[Circuit Breaker](examples/circuitbreaker/main.go)**: Layering defensive strategies.
 - **[Adaptive Retries](examples/adaptiveretry/main.go)**: Preventing retry storms with a token bucket.
 - **[Pushback Signal](examples/pushback/main.go)**: Aborting retries immediately using `CancelAllRetries`.
+- **[Panic Recovery](examples/panicrecovery/main.go)**: Implementing Erlang's "Let It Crash" philosophy.
 
 ---
 
@@ -181,7 +182,17 @@ resile.Do(ctx, action,
 )
 ```
 
-### 9. Fast Unit Testing
+### 10. Panic Recovery ("Let It Crash")
+Convert unexpected Go panics into retryable errors, allowing your application to reset to a known good state without a hard crash.
+
+```go
+// val will succeed even if the first attempt panics
+val, err := resile.Do(ctx, riskyAction, 
+    resile.WithPanicRecovery(),
+)
+```
+
+### 11. Fast Unit Testing
 Never let retry timers slow down your CI. Use `WithTestingBypass` to make all retries execute instantly.
 
 ```go
@@ -211,6 +222,7 @@ func TestMyService(t *testing.T) {
 | `WithInstrumenter(inst)` | Attaches telemetry (slog/OTel/Prometheus). | `nil` |
 | `WithFallback(f)` | Sets a generic fallback function. | `nil` |
 | `WithFallbackErr(f)` | Sets a fallback function for error-only actions. | `nil` |
+| `WithPanicRecovery()` | Enables "Let It Crash" panic handling. | `false` |
 
 ---
 
