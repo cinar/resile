@@ -196,6 +196,19 @@ By providing auxiliary, optional sub-packages (e.g., resilience/otel and resilie
 * **OpenTelemetry Tracing**: The optional otel instrumenter creates a discrete span for each individual retry attempt.62 Following strict OpenTelemetry semantic conventions, it names the span generically (e.g., retry.attempt) and attaches high-cardinality attributes like retry.num, error.type, and retry.backoff\_duration.16 This granular tracing allows operators to visualize exactly how much latency in a request was caused by network transfer versus the sleep duration of the backoff algorithm.  
 * **Prometheus Metrics**: Mirroring the exact feature set of stamina, an optional Prometheus implementation provisions a highly specific counter metric named stamina\_retries\_total (or an equivalent domain name).16 This counter is incremented upon the initiation of every retry iteration. It utilizes labels corresponding to the execution callable name, the retry\_num, and the normalized error\_type.16 This aggregated telemetry provides Site Reliability Engineers (SREs) with actionable, dashboard-ready insights to identify precisely which downstream dependencies are triggering retry storms across the cluster.
 
+## **Macro-Level Protection: Adaptive Retries**
+
+Standard exponential backoff protects individual services from thundering herds, but it does not prevent a massive fleet of clients from continuously retrying against a system that is fundamentally degraded. To address this, the library implements "Adaptive Retries" inspired by modern cloud SDKs.
+
+### **The Token Bucket Algorithm**
+
+The implementation utilizes a client-side token bucket rate limiter specifically for retries:
+*   **Success Refill**: Every successful request adds a fraction of a token to the bucket.
+*   **Retry Cost**: Every retry attempt consumes a significant number of tokens.
+*   **Fail-Fast**: If the bucket is depleted, the library begins failing fast locally, completely cutting off traffic to the downstream service until it recovers and starts returning successes again.
+
+This provides mathematical macro-level protection across an entire cluster, ensuring that as a service degrades, the aggregate retry pressure from all clients is automatically throttled at the source.
+
 ## **Layered Resilience: Integrating Circuit Breakers**
 
 While intelligent retries flawlessly handle transient, momentary failures, they are inherently destructive when facing permanent, systemic outages. If a core database cluster is offline due to a hardware failure, hammering it with thousands of aggressively retried connections will artificially inflate network latency, completely exhaust the connection pools of the upstream services, and potentially prevent the database from ever recovering once it is brought back online due to the sheer volume of queued connection attempts.1

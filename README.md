@@ -22,8 +22,9 @@
   - [Handling Rate Limits (Retry-After)](#5-handling-rate-limits-retry-after)
   - [Fallback Strategies](#6-fallback-strategies)
   - [Layered Defense with Circuit Breaker](#7-layered-defense-with-circuit-breaker)
-  - [Structured Logging & Telemetry](#8-structured-logging--telemetry)
-  - [Fast Unit Testing](#9-fast-unit-testing)
+  - [Macro-Level Protection (Adaptive Retries)](#8-macro-level-protection-adaptive-retries)
+  - [Structured Logging & Telemetry](#9-structured-logging--telemetry)
+  - [Fast Unit Testing](#10-fast-unit-testing)
 - [Configuration Reference](#configuration-reference)
 - [Architecture & Design](#architecture--design)
 - [License](#license)
@@ -42,6 +43,7 @@ go get github.com/cinar/resile
 
 In distributed systems, transient failures are a mathematical certainty. Resile simplifies the "Correct Way" to retry:
 - **AWS Full Jitter**: Uses the industry-standard algorithm to prevent "thundering herd" synchronization.
+- **Adaptive Retries**: Built-in token bucket rate limiting to prevent "retry storms" across a cluster.
 - **Generic-First**: No `interface{}` or reflection. Full compile-time type safety.
 - **Context-Aware**: Strictly respects `context.Context` cancellation and deadlines.
 - **Zero-Dependency Core**: The core library only depends on the Go standard library.
@@ -59,6 +61,7 @@ The [examples/](examples/) directory contains standalone programs showing how to
 - **[Fallback Strategies](examples/fallback/main.go)**: Returning stale data when all attempts fail.
 - **[Stateful Rotation](examples/stateful/main.go)**: Rotating API endpoints using `RetryState`.
 - **[Circuit Breaker](examples/circuitbreaker/main.go)**: Layering defensive strategies.
+- **[Adaptive Retries](examples/adaptiveretry/main.go)**: Preventing retry storms with a token bucket.
 - **[Pushback Signal](examples/pushback/main.go)**: Aborting retries immediately using `CancelAllRetries`.
 
 ---
@@ -155,7 +158,17 @@ cb := circuit.New(circuit.Config{
 err := resile.DoErr(ctx, action, resile.WithCircuitBreaker(cb))
 ```
 
-### 8. Structured Logging & Telemetry
+### 8. Macro-Level Protection (Adaptive Retries)
+Prevent "retry storms" by using a token bucket that is shared across your entire cluster of clients. If the downstream service is degraded, the bucket will quickly deplete, causing clients to fail fast locally instead of hammering the service.
+
+```go
+// Share this bucket across multiple executions/goroutines
+bucket := resile.DefaultAdaptiveBucket()
+
+err := resile.DoErr(ctx, action, resile.WithAdaptiveBucket(bucket))
+```
+
+### 9. Structured Logging & Telemetry
 Integrate with `slog` or `OpenTelemetry` without bloating your core dependencies.
 
 ```go
@@ -194,6 +207,7 @@ func TestMyService(t *testing.T) {
 | `WithRetryIf(error)` | Only retry if `errors.Is(err, target)`. | All non-fatal |
 | `WithRetryIfFunc(func)` | Custom logic to decide if an error is retriable. | `nil` |
 | `WithCircuitBreaker(cb)` | Attaches a circuit breaker state machine. | `nil` |
+| `WithAdaptiveBucket(b)` | Attaches a token bucket for adaptive retries. | `nil` |
 | `WithInstrumenter(inst)` | Attaches telemetry (slog/OTel/Prometheus). | `nil` |
 | `WithFallback(f)` | Sets a generic fallback function. | `nil` |
 | `WithFallbackErr(f)` | Sets a fallback function for error-only actions. | `nil` |

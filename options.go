@@ -106,3 +106,11 @@ func WithHedgingDelay(delay time.Duration) Option {
 		c.HedgingDelay = delay
 	}
 }
+
+// WithAdaptiveBucket sets a token bucket for adaptive retries.
+// The bucket should be shared across multiple executions to protect downstream services globally.
+func WithAdaptiveBucket(bucket *AdaptiveBucket) Option {
+	return func(c *Config) {
+		c.AdaptiveBucket = bucket
+	}
+}
