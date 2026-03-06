@@ -24,8 +24,7 @@ func main() {
 	attempts := 0
 	val, err := resile.Do(ctx, func(ctx context.Context) (string, error) {
 		attempts++
-		fmt.Printf("Attempt %d: Executing risky operation...
-", attempts)
+		fmt.Printf("Attempt %d: Executing risky operation...\n", attempts)
 
 		if attempts < 3 {
 			// Simulate an unexpected bug that triggers a panic.
@@ -40,27 +39,21 @@ func main() {
 	)
 
 	if err != nil {
-		fmt.Printf("
-Operation failed after retries: %v
-", err)
+		fmt.Printf("\nOperation failed after retries: %v\n", err)
 	} else {
-		fmt.Printf("
-Operation succeeded: %s
-", val)
+		fmt.Printf("\nOperation succeeded: %s\n", val)
 	}
 
-	fmt.Println("
---- Handling the Panic Error ---")
+	fmt.Println("\n--- Handling the Panic Error ---")
 
 	// 2. You can inspect the panic error to log the stack trace.
-	_, err = resile.DoErr(ctx, func(ctx context.Context) error {
+	err = resile.DoErr(ctx, func(ctx context.Context) error {
 		panic("irrecoverable failure")
 	}, resile.WithPanicRecovery(), resile.WithMaxAttempts(1))
 
 	var panicErr *resile.PanicError
 	if errors.As(err, &panicErr) {
-		fmt.Printf("Caught Panic Value: %v
-", panicErr.Value)
+		fmt.Printf("Caught Panic Value: %v\n", panicErr.Value)
 		fmt.Println("First line of stack trace captured:")
 		// Printing the whole stack trace might be too verbose for an example.
 		// panicErr.StackTrace contains the full debug.Stack().
