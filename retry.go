@@ -37,6 +37,7 @@ type Config struct {
 	Instrumenter   Instrumenter
 	CircuitBreaker *circuit.Breaker
 	Fallback       any
+	AdaptiveBucket *AdaptiveBucket
 }
 
 // Do executes an action with retry logic using the provided options.
@@ -234,6 +235,9 @@ func (c *Config) execute(ctx context.Context, action doAction) error {
 
 		// Success terminates the loop.
 		if lastErr == nil {
+			if c.AdaptiveBucket != nil {
+				c.AdaptiveBucket.AddSuccessToken()
+			}
 			return nil
 		}
 
@@ -249,6 +253,11 @@ func (c *Config) execute(ctx context.Context, action doAction) error {
 
 		// If this was the last attempt, don't sleep.
 		if attempt+1 >= c.MaxAttempts {
+			break
+		}
+
+		// Check adaptive bucket before committing to next attempt.
+		if c.AdaptiveBucket != nil && !c.AdaptiveBucket.AcquireRetryToken() {
 			break
 		}
 
@@ -288,32 +297,41 @@ func (c *Config) executeHedged(ctx context.Context, action doAction) error {
 
 	for {
 		if attemptsStarted < c.MaxAttempts {
-			attempt := attemptsStarted
-			attemptsStarted++
-			inFlight++
-			go func(a uint) {
-				state := RetryState{
-					Name:          c.Name,
-					Attempt:       a,
-					MaxAttempts:   c.MaxAttempts,
-					TotalDuration: time.Since(start),
-					NextDelay:     c.HedgingDelay,
-				}
+			canStart := true
+			if attemptsStarted > 0 && c.AdaptiveBucket != nil {
+				canStart = c.AdaptiveBucket.AcquireRetryToken()
+			}
 
-				var err error
-				if c.CircuitBreaker != nil {
-					err = c.CircuitBreaker.Execute(func() error {
-						return c.executeOnce(ctx, action, state)
-					})
-				} else {
-					err = c.executeOnce(ctx, action, state)
-				}
+			if canStart {
+				attempt := attemptsStarted
+				attemptsStarted++
+				inFlight++
+				go func(a uint) {
+					state := RetryState{
+						Name:          c.Name,
+						Attempt:       a,
+						MaxAttempts:   c.MaxAttempts,
+						TotalDuration: time.Since(start),
+						NextDelay:     c.HedgingDelay,
+					}
 
-				select {
-				case results <- err:
-				case <-ctx.Done():
-				}
-			}(attempt)
+					var err error
+					if c.CircuitBreaker != nil {
+						err = c.CircuitBreaker.Execute(func() error {
+							return c.executeOnce(ctx, action, state)
+						})
+					} else {
+						err = c.executeOnce(ctx, action, state)
+					}
+
+					select {
+					case results <- err:
+					case <-ctx.Done():
+					}
+				}(attempt)
+			} else {
+				attemptsStarted = c.MaxAttempts
+			}
 		}
 
 		if attemptsStarted >= c.MaxAttempts && inFlight == 0 {
@@ -340,6 +358,9 @@ func (c *Config) executeHedged(ctx context.Context, action doAction) error {
 			inFlight--
 			if err == nil {
 				cancel()
+				if c.AdaptiveBucket != nil {
+					c.AdaptiveBucket.AddSuccessToken()
+				}
 				return nil
 			}
 			lastErr = err
