@@ -7,6 +7,7 @@ package resile
 import (
 	"context"
 	"errors"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -25,6 +26,17 @@ type Retryer interface {
 	DoErrHedged(ctx context.Context, action func(context.Context) error) error
 }
 
+// PanicError represents a recovered panic during execution.
+type PanicError struct {
+	Value      any
+	StackTrace string
+}
+
+// Error implements the error interface.
+func (p *PanicError) Error() string {
+	return "panic: " + p.StackTrace
+}
+
 // Config represents the configuration for the retry execution.
 type Config struct {
 	Name           string
@@ -38,6 +50,7 @@ type Config struct {
 	CircuitBreaker *circuit.Breaker
 	Fallback       any
 	AdaptiveBucket *AdaptiveBucket
+	RecoverPanics  bool
 }
 
 // Do executes an action with retry logic using the provided options.
@@ -397,14 +410,29 @@ func (c *Config) executeHedged(ctx context.Context, action doAction) error {
 }
 
 // executeOnce performs a single attempt and triggers instrumentation.
-func (c *Config) executeOnce(ctx context.Context, action doAction, state RetryState) error {
+func (c *Config) executeOnce(ctx context.Context, action doAction, state RetryState) (err error) {
 	// Invoke instrumentation before attempt.
 	if c.Instrumenter != nil {
 		ctx = c.Instrumenter.BeforeAttempt(ctx, state)
 	}
 
 	// Execute the user closure.
-	err := action(ctx, state)
+	if c.RecoverPanics {
+		defer func() {
+			if r := recover(); r != nil {
+				err = &PanicError{
+					Value:      r,
+					StackTrace: string(debug.Stack()),
+				}
+				// Update state for AfterAttempt.
+				state.LastError = err
+				if c.Instrumenter != nil {
+					c.Instrumenter.AfterAttempt(ctx, state)
+				}
+			}
+		}()
+	}
+	err = action(ctx, state)
 
 	// Update state for AfterAttempt.
 	state.LastError = err

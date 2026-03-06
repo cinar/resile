@@ -114,3 +114,11 @@ func WithAdaptiveBucket(bucket *AdaptiveBucket) Option {
 		c.AdaptiveBucket = bucket
 	}
 }
+
+// WithPanicRecovery enables recovering from panics during execution.
+// If a panic occurs, it is converted into a PanicError and treated as a retryable error.
+func WithPanicRecovery() Option {
+	return func(c *Config) {
+		c.RecoverPanics = true
+	}
+}
