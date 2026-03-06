@@ -24,6 +24,9 @@ func (e *MyAPIError) Error() string { return "too many requests (HTTP 429)" }
 func (e *MyAPIError) RetryAfter() time.Duration {
 	return time.Until(e.WaitUntil)
 }
+func (e *MyAPIError) CancelAllRetries() bool {
+	return false
+}
 
 func main() {
 	ctx := context.Background()

@@ -59,6 +59,7 @@ The [examples/](examples/) directory contains standalone programs showing how to
 - **[Fallback Strategies](examples/fallback/main.go)**: Returning stale data when all attempts fail.
 - **[Stateful Rotation](examples/stateful/main.go)**: Rotating API endpoints using `RetryState`.
 - **[Circuit Breaker](examples/circuitbreaker/main.go)**: Layering defensive strategies.
+- **[Pushback Signal](examples/pushback/main.go)**: Aborting retries immediately using `CancelAllRetries`.
 
 ---
 
@@ -107,7 +108,7 @@ data, err := resile.DoState(ctx, func(ctx context.Context, state resile.RetrySta
 ```
 
 ### 5. Handling Rate Limits (Retry-After)
-Resile automatically detects if an error implements `RetryAfterError` and overrides the jittered backoff with the server-dictated duration.
+Resile automatically detects if an error implements `RetryAfterError`. It can override the jittered backoff with a server-dictated duration and can also signal immediate termination (pushback).
 
 ```go
 type RateLimitError struct {
@@ -117,6 +118,10 @@ type RateLimitError struct {
 func (e *RateLimitError) Error() string { return "too many requests" }
 func (e *RateLimitError) RetryAfter() time.Duration {
     return time.Until(e.WaitUntil)
+}
+func (e *RateLimitError) CancelAllRetries() bool {
+    // Return true to abort the entire retry loop immediately.
+    return false 
 }
 
 // Resile will sleep exactly until WaitUntil when this error is encountered.

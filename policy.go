@@ -38,10 +38,11 @@ func isFatal(err error) bool {
 
 // RetryAfterError is implemented by errors that specify how long to wait before retrying.
 // This is commonly used with HTTP 429 (Too Many Requests) or 503 (Service Unavailable)
-// to respect Retry-After headers.
+// to respect Retry-After headers. It also supports pushback signals to cancel all retries.
 type RetryAfterError interface {
 	error
 	RetryAfter() time.Duration
+	CancelAllRetries() bool
 }
 
 // retryPolicy defines the logic to determine if an error is retriable.

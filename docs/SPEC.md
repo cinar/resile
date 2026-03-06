@@ -90,14 +90,17 @@ The architecture defines a specific interface to identify dynamically calculated
 
 Go
 
-type RetryAfterError interface {  
-    error  
-    RetryAfter() time.Duration  
+type RetryAfterError interface {
+    error
+    RetryAfter() time.Duration
+    CancelAllRetries() bool
 }
 
 When the user's action closure executes an HTTP request, it is responsible for inspecting the response headers. If a 429 or 503 status code is encountered, the closure must parse the Retry-After header. The HTTP specification permits this header to be either an integer representing delay-seconds or a full HTTP-date string.50 The user's application logic parses this value, calculates the required time.Duration, and returns a custom error struct that implements the RetryAfterError interface.48
 
-Within the core execution loop, before calculating the Full Jitter backoff, the retry engine utilizes Go's errors.As functionality to inspect the returned error stack. If the error resolves to an implementation of RetryAfterError, the backoff engine detects this assertion.52 It immediately suspends the standard AWS Full Jitter calculation for that specific attempt and rigidly enforces the exact sleep duration specified by the server.48 This creates an adaptive resilience mechanism that scales gracefully from handling random packet loss to strictly obeying enterprise API traffic controllers.52
+Additionally, the CancelAllRetries() method allows the error to signal a permanent rejection or a pushback that should terminate the entire retry loop immediately. This is useful for handling exhausted quotas or specific server-dictated terminal states (e.g., gRPC pushback with negative delay).
+
+Within the core execution loop, before calculating the Full Jitter backoff, the retry engine utilizes Go's errors.As functionality to inspect the returned error stack. If the error resolves to an implementation of RetryAfterError, the backoff engine detects this assertion.52 It first checks CancelAllRetries(); if it returns true, the retry loop is aborted immediately. Otherwise, it suspends the standard AWS Full Jitter calculation for that specific attempt and rigidly enforces the exact sleep duration specified by the server.48 This creates an adaptive resilience mechanism that scales gracefully from handling random packet loss to strictly obeying enterprise API traffic controllers.52
 
 ## **Concurrency, Context, and Goroutine Lifecycle Management**
 
@@ -328,12 +331,13 @@ The backoff engine defaults to the AWS Full Jitter algorithm.3 However, it must 
 
 Go
 
-type RetryAfterError interface {  
-    error  
-    RetryAfter() time.Duration  
+type RetryAfterError interface {
+    error
+    RetryAfter() time.Duration
+    CancelAllRetries() bool
 }
 
-If errors.As(err, \&retryAfterErr) evaluates to true, the backoff engine ignores the Full Jitter calculation and rigidly sleeps for the specified duration. By strictly adhering to the "Errors are Values" philosophy of modern Go, developers can construct robust and expressive routing loops.
+If errors.As(err, \&retryAfterErr) evaluates to true, the engine first checks CancelAllRetries() to determine if the retry loop should be aborted. If not, it ignores the Full Jitter calculation and rigidly sleeps for the specified duration. By strictly adhering to the "Errors are Values" philosophy of modern Go, developers can construct robust and expressive routing loops.
 
 ### **5\. Telemetry and Hook Interfaces**
 

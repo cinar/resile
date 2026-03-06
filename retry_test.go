@@ -112,11 +112,16 @@ func TestRetryLoop_Success(t *testing.T) {
 
 type mockRetryAfter struct {
 	error
-	delay time.Duration
+	delay  time.Duration
+	cancel bool
 }
 
 func (m *mockRetryAfter) RetryAfter() time.Duration {
 	return m.delay
+}
+
+func (m *mockRetryAfter) CancelAllRetries() bool {
+	return m.cancel
 }
 
 func (m *mockRetryAfter) Unwrap() error {
@@ -135,7 +140,7 @@ func TestRetryLoop_RetryAfter(t *testing.T) {
 
 	start := time.Now()
 	err := config.execute(ctx, func(ctx context.Context, _ RetryState) error {
-		return &mockRetryAfter{errTest, expectedDelay}
+		return &mockRetryAfter{error: errTest, delay: expectedDelay, cancel: false}
 	})
 	duration := time.Since(start)
 
@@ -146,6 +151,29 @@ func TestRetryLoop_RetryAfter(t *testing.T) {
 	// We expect roughly 10ms sleep.
 	if duration < expectedDelay {
 		t.Errorf("expected sleep of at least %v, got %v", expectedDelay, duration)
+	}
+}
+
+func TestRetryLoop_CancelAllRetries(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	config := DefaultConfig()
+	config.MaxAttempts = 5
+	config.BaseDelay = 0
+
+	var count uint
+	err := config.execute(ctx, func(ctx context.Context, _ RetryState) error {
+		count++
+		return &mockRetryAfter{error: errTest, delay: 0, cancel: true}
+	})
+
+	if count != 1 {
+		t.Errorf("expected only 1 attempt due to pushback, got %d", count)
+	}
+
+	if !errors.Is(err, errTest) {
+		t.Errorf("expected %v, got %v", errTest, err)
 	}
 }
 
@@ -472,4 +500,28 @@ func TestRetryerInterface_Hedged(t *testing.T) {
 			t.Errorf("expected 2 attempts, got %d", atomic.LoadInt32(&count))
 		}
 	})
+}
+
+func TestDoHedged_CancelAllRetries(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	var count int32
+	_, err := DoHedged(ctx, func(ctx context.Context) (string, error) {
+		attempt := atomic.AddInt32(&count, 1)
+		if attempt == 1 {
+			return "", &mockRetryAfter{error: errTest, delay: 0, cancel: true}
+		}
+		// Second attempt might start but should be canceled.
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+			return "", errOther
+		}
+	}, WithMaxAttempts(3), WithHedgingDelay(10*time.Millisecond))
+
+	if !errors.Is(err, errTest) {
+		t.Errorf("expected %v, got %v", errTest, err)
+	}
 }
