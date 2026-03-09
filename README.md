@@ -62,6 +62,7 @@ In distributed systems, transient failures are a mathematical certainty. Resile 
 Want to learn more about the philosophy behind Resile and advanced resilience patterns in Go? Check out these deep dives:
 
 * [Stop Writing Manual Retry Loops in Go: Why Your Current Logic is Probably Dangerous](https://dev.to/onurcinar/stop-writing-manual-retry-loops-in-go-why-your-current-logic-is-probably-dangerous-5bj5)
+* [Python's Stamina for Go: Bringing Ergonomic Resilience to Gophers](<URL_PLACEHOLDER>)
 
 ---
 
