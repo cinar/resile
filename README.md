@@ -13,6 +13,7 @@
 ## Table of Contents
 - [Installation](#installation)
 - [Why Resile?](#why-resile)
+- [Articles & Tutorials](#articles--tutorials)
 - [Examples](#examples)
 - [Common Use Cases](#common-use-cases)
   - [Simple Retries](#1-simple-retries)
@@ -53,6 +54,14 @@ In distributed systems, transient failures are a mathematical certainty. Resile 
 - **Context-Aware**: Strictly respects `context.Context` cancellation and deadlines.
 - **Zero-Dependency Core**: The core library only depends on the Go standard library.
 - **Opinionated Defaults**: Sensible production-ready defaults (5 attempts, exponential backoff).
+
+---
+
+## Articles & Tutorials
+
+Want to learn more about the philosophy behind Resile and advanced resilience patterns in Go? Check out these deep dives:
+
+* [Stop Writing Manual Retry Loops in Go: Why Your Current Logic is Probably Dangerous](https://dev.to/onurcinar/stop-writing-manual-retry-loops-in-go-why-your-current-logic-is-probably-dangerous-5bj5)
 
 ---
 
