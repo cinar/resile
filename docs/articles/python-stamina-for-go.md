@@ -2,8 +2,6 @@
 
 If you've ever worked in the Python ecosystem, you've likely encountered [tenacity](https://github.com/jd/tenacity) or its opinionated wrapper, [stamina](https://github.com/hynek/stamina). They make retrying transient failures feel like magic: a single decorator, sensible production defaults (exponential backoff + jitter), and built-in observability.
 
-When I moved back to Go, I felt the "Resilience Gap." 
-
 The Go ecosystem has powerful tools, but they often require a lot of boilerplate, use reflection, or lack the "Correct by Default" philosophy that makes `stamina` so great.
 
 That's why I built **[Resile](https://github.com/cinar/resile)**. It’s a love letter to Python's ergonomics, written in idiomatic, type-safe Go 1.18+.
