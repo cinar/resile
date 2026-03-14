@@ -63,7 +63,7 @@ Want to learn more about the philosophy behind Resile and advanced resilience pa
 
 * [Stop Writing Manual Retry Loops in Go: Why Your Current Logic is Probably Dangerous](https://dev.to/onurcinar/stop-writing-manual-retry-loops-in-go-why-your-current-logic-is-probably-dangerous-5bj5)
 * [Python's Stamina for Go: Bringing Ergonomic Resilience to Gophers](https://dev.to/onurcinar/pythons-stamina-for-go-bringing-ergonomic-resilience-to-gophers-1lf2)
-
+* [Beating Tail Latency: A Guide to Request Hedging in Go Microservices](https://dev.to/onurcinar/beating-tail-latency-a-guide-to-request-hedging-in-go-microservices-p81)
 ---
 
 ## Examples
