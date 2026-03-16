@@ -65,6 +65,7 @@ Want to learn more about the philosophy behind Resile and advanced resilience pa
 * [Python's Stamina for Go: Bringing Ergonomic Resilience to Gophers](https://dev.to/onurcinar/pythons-stamina-for-go-bringing-ergonomic-resilience-to-gophers-1lf2)
 * [Beating Tail Latency: A Guide to Request Hedging in Go Microservices](https://dev.to/onurcinar/beating-tail-latency-a-guide-to-request-hedging-in-go-microservices-p81)
 * [Preventing Microservice Meltdowns: Adaptive Retries and Circuit Breakers in Go](https://dev.to/onurcinar/preventing-microservice-meltdowns-adaptive-retries-and-circuit-breakers-in-go-30ho)
+* [Self-Healing State Machines: Resilient State Transitions in Go](https://dev.to/onurcinar/self-healing-state-machines-resilient-state-transitions-in-go-3e0)
 
 
 ## Examples
@@ -80,6 +81,7 @@ The [examples/](examples/) directory contains standalone programs showing how to
 - **[Adaptive Retries](examples/adaptiveretry/main.go)**: Preventing retry storms with a token bucket.
 - **[Pushback Signal](examples/pushback/main.go)**: Aborting retries immediately using `CancelAllRetries`.
 - **[Panic Recovery](examples/panicrecovery/main.go)**: Implementing Erlang's "Let It Crash" philosophy.
+- **[State Machine](examples/statemachine/main.go)**: Building resilient state machines inspired by Erlang's `gen_statem`.
 
 ---
 
@@ -269,7 +271,18 @@ err := resile.DoErr(ctx, func(ctx context.Context) error {
 })
 ```
 
-### 15. Custom Error Filtering
+### 15. Resilient State Machines
+Build self-healing state machines where every transition is protected by resilience policies, inspired by Erlang's `gen_statem`.
+
+```go
+// Create a state machine: initialState, initialData, transitionFunc, opts
+sm := resile.NewStateMachine(Disconnected, data, transition, resile.WithMaxAttempts(3))
+
+// Transitions are protected by retries, circuit breakers, etc.
+err := sm.Handle(ctx, Connect)
+```
+
+### 16. Custom Error Filtering
 Control which errors trigger a retry using `WithRetryIf` (for exact matches) or `WithRetryIfFunc` (for custom logic like checking status codes).
 
 ```go
