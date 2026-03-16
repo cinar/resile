@@ -11,3 +11,4 @@ This repository is governed by the architectural specification in `SPEC.md`.
 6.  **Documentation**: Update the main README.md file.
 7.  **Coverage**: Keep the code coverage above 90% at all times.
 8.  **Formatting**: Run Go source code formatting at the end.
+9.  **Articles**: With every new feature, write an article about it in `docs/articles/`.
