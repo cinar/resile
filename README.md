@@ -30,8 +30,10 @@
   - [Fast Unit Testing](#12-fast-unit-testing)
   - [Reusable Clients & Dependency Injection](#13-reusable-clients--dependency-injection)
   - [Marking Errors as Fatal](#14-marking-errors-as-fatal)
-  - [Custom Error Filtering](#15-custom-error-filtering)
-- [Configuration Reference](#configuration-reference)
+  - [Custom Error Filtering](#16-custom-error-filtering)
+  - [Policy Composition & Chaining](#17-policy-composition--chaining)
+  - [Configuration Reference](#configuration-reference)
+
 - [Architecture & Design](#architecture--design)
 - [License](#license)
 
@@ -297,6 +299,31 @@ err := resile.DoErr(ctx, action,
 )
 ```
 
+### 17. Policy Composition & Chaining
+While `Do` and `DoErr` provide a fixed execution order (Bulkhead -> Retry -> Timeout -> Circuit Breaker), you can use the `Policy` API to define a custom order of resilience layers. Policies are thread-safe and reusable.
+
+The order of options in `NewPolicy` determines the execution hierarchy from **outermost to innermost**.
+
+```go
+// Define a reusable policy: Bulkhead(20) -> Circuit Breaker -> Retry(3) -> Timeout(1s)
+standardPolicy := resile.NewPolicy(
+    resile.WithBulkhead(20),
+    resile.WithCircuitBreaker(cb),
+    resile.WithRetry(3),
+    resile.WithTimeout(1*time.Second),
+)
+
+// Reuse across multiple calls
+val, err := standardPolicy.Do(ctx, action)
+err := standardPolicy.DoErr(ctx, actionErr)
+```
+
+In this example:
+1. **Bulkhead** is the outermost layer. It limits total concurrent calls to the whole stack.
+2. **Circuit Breaker** wraps the retry loop. If the whole retry loop fails multiple times, the circuit opens.
+3. **Retry** wraps the timeout and the action. Each retry attempt has its own timeout.
+4. **Timeout** is the innermost layer. It limits how long each individual attempt can take.
+
 ---
 
 ## Configuration Reference
@@ -305,6 +332,7 @@ err := resile.DoErr(ctx, action,
 | :--- | :--- | :--- |
 | `WithName(string)` | Identifies the operation in logs/metrics. | `""` |
 | `WithMaxAttempts(uint)` | Total number of attempts (initial + retries). | `5` |
+| `WithRetry(uint)` | Alias for `WithMaxAttempts` that adds a retry policy. | - |
 | `WithBaseDelay(duration)` | Initial backoff duration. | `100ms` |
 | `WithMaxDelay(duration)` | Maximum possible backoff duration. | `30s` |
 | `WithBackoff(Backoff)` | Custom backoff algorithm (e.g. constant). | `Full Jitter` |
@@ -312,6 +340,8 @@ err := resile.DoErr(ctx, action,
 | `WithRetryIf(error)` | Only retry if `errors.Is(err, target)`. | All non-fatal |
 | `WithRetryIfFunc(func)` | Custom logic to decide if an error is retriable. | `nil` |
 | `WithCircuitBreaker(cb)` | Attaches a circuit breaker state machine. | `nil` |
+| `WithBulkhead(uint)` | Limits concurrent executions. | `nil` |
+| `WithTimeout(duration)` | Sets an execution timeout for the operation. | `0` |
 | `WithAdaptiveBucket(b)` | Attaches a token bucket for adaptive retries. | `nil` |
 | `WithInstrumenter(inst)` | Attaches telemetry (slog/OTel/Prometheus). | `nil` |
 | `WithFallback(f)` | Sets a generic fallback function. | `nil` |

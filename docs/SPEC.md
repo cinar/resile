@@ -253,13 +253,46 @@ By intelligently wrapping the circuit breaker logic around the execution closure
 
 ## **Policy Composition and Fallbacks**
 
-The final layer of a sophisticated resilience strategy is the implementation of Fallbacks. While retries handle transient errors and circuit breakers prevent systemic overload, a fallback provides a deterministic path for "graceful degradation." In a distributed system, returning a partial or stale result is often infinitely preferable to returning a hard error to the end-user.
+The final layer of a sophisticated resilience strategy is the implementation of Fallbacks and the flexible composition of resilience policies. While retries handle transient errors and circuit breakers prevent systemic overload, a fallback provides a deterministic path for "graceful degradation." In a distributed system, returning a partial or stale result is often infinitely preferable to returning a hard error to the end-user.
 
-The architecture permits users to register a `FallbackFunc` via functional options. This function is automatically invoked by the execution engine if:
+### **The Middleware Pipeline Architecture**
+
+To support flexible policy composition, the library implements a modular **middleware (interceptor) pattern**. Each resilience strategy (Retry, Circuit Breaker, Bulkhead, Timeout) is implemented as a middleware that wraps the subsequent action. This architecture allows the library to support both a standard, opinionated execution order for rapid development and a fully customizable order for advanced use cases.
+
+The core execution engine builds a pipeline where each middleware handles a specific resilience concern:
+1.  **Bulkhead**: Limits concurrent executions at the outermost layer.
+2.  **Retry**: Drives the execution loop and backoff logic.
+3.  **Circuit Breaker**: Monitors failures to protect downstream systems.
+4.  **Timeout**: Enforces temporal constraints on individual attempts.
+5.  **Telemetry**: Injects observability hooks.
+6.  **Panic Recovery**: Safely handles runtime failures.
+
+### **The Policy API**
+
+The architecture introduces a dedicated `Policy` type that encapsulates a composed resilience strategy. A `Policy` is thread-safe, reusable, and allows developers to define the execution hierarchy from **outermost to innermost**.
+
+Go
+
+standardPolicy := resile.NewPolicy(
+    resile.WithBulkhead(20),
+    resile.WithCircuitBreaker(cb),
+    resile.WithRetry(3),
+    resile.WithTimeout(1*time.Second),
+)
+
+// Reusable across multiple calls
+val, err := standardPolicy.Do(ctx, action)
+
+This "Onion Model" ensures that policies are applied in the exact order requested. For instance, placing a `Retry` outside a `CircuitBreaker` means each retry attempt is governed by the breaker, while reversing them means the breaker only trips if the entire retry loop fails.
+
+### **Fallback Strategy Execution**
+
+The library permits users to register a `FallbackFunc` via functional options. This function is automatically invoked by the execution engine if:
 1.  **Exhaustion**: All configured retry attempts have been depleted without success.
-2.  **Short-Circuiting**: The associated Circuit Breaker is in the `Open` state, preventing any attempt.
+2.  **Short-Circuiting**: The associated Circuit Breaker is in the `Open` state.
+3.  **Throttling**: The Bulkhead is at capacity.
 
-By utilizing Go's type parameters, the library ensures that the fallback function's return signature matches the primary action's signature. This allows developers to seamlessly implement patterns such as returning stale data from a local Redis cache when a primary database query fails, or returning a default configuration when a remote configuration service is unreachable. This composition of Retry, Circuit Breaker, and Fallback transforms a brittle network call into a robust, multi-layered defensive operation.
+By utilizing Go's type parameters, the library ensures that the fallback function's return signature matches the primary action's signature. This allows developers to seamlessly implement patterns such as returning stale data from a local Redis cache when a primary database query fails, or returning a default configuration when a remote configuration service is unreachable.
 
 ## **Testing Strategies and Contextual Overrides**
 
@@ -301,7 +334,9 @@ The repository should be structured to enforce zero dependencies in the core pac
 
 ├── options.go \# Functional options and Config struct
 
-├── policy.go \# Error unwrapping and retry evaluation
+├── policy.go \# Error unwrapping and Policy API
+
+├── bulkhead.go \# Bulkhead semaphore implementation
 
 ├── state.go \# RetryState definition
 
@@ -315,9 +350,12 @@ The repository should be structured to enforce zero dependencies in the core pac
 
 ### **2\. Core Generics and Execution API**
 
-The API provides two main generic entry points, ensuring type safety for functions returning (T, error) or just error.32
+The API provides two main generic entry points and a flexible policy builder, ensuring type safety for functions returning (T, error) or just error.32
 
 Go
+
+// NewPolicy creates a composed resilience strategy.
+func NewPolicy(opts...Option) \*Policy
 
 // Do executes a function returning a generic type T and an error.  
 func Do(ctx context.Context, fn func(context.Context) (T, error), opts...Option) (T, error)
