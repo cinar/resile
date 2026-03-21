@@ -100,3 +100,23 @@ func (o *otelInstrumenter) AfterAttempt(ctx context.Context, state resile.RetryS
 		)
 	}
 }
+
+func (o *otelInstrumenter) OnBulkheadFull(ctx context.Context, state resile.RetryState) {
+	_, span := o.tracer.Start(ctx, "resile.bulkhead_full",
+		trace.WithAttributes(
+			attribute.String("resile.name", state.Name),
+		),
+	)
+	span.SetStatus(codes.Error, "bulkhead capacity reached")
+	span.End()
+}
+
+func (o *otelInstrumenter) OnRateLimitExceeded(ctx context.Context, state resile.RetryState) {
+	_, span := o.tracer.Start(ctx, "resile.rate_limit_exceeded",
+		trace.WithAttributes(
+			attribute.String("resile.name", state.Name),
+		),
+	)
+	span.SetStatus(codes.Error, "rate limit exceeded")
+	span.End()
+}

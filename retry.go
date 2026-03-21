@@ -53,6 +53,7 @@ type Config struct {
 	RecoverPanics  bool
 	Bulkhead       *Bulkhead
 	Timeout        time.Duration
+	RateLimiter    *RateLimiter
 	pipeline       []middleware
 }
 
@@ -245,6 +246,10 @@ func (c *Config) execute(ctx context.Context, action doAction) error {
 // buildDefaultPipeline builds the legacy hardcoded pipeline order.
 // Order: Bulkhead -> Retry ( CircuitBreaker -> Instrumenter -> PanicRecovery )
 func (c *Config) buildDefaultPipeline() {
+	if c.RateLimiter != nil {
+		c.pipeline = append(c.pipeline, c.rateLimiterMiddleware())
+	}
+
 	if c.Bulkhead != nil {
 		c.pipeline = append(c.pipeline, c.bulkheadMiddleware())
 	}
@@ -264,6 +269,23 @@ func (c *Config) buildDefaultPipeline() {
 
 	if c.RecoverPanics {
 		c.pipeline = append(c.pipeline, c.panicRecoveryMiddleware())
+	}
+}
+
+func (c *Config) rateLimiterMiddleware() middleware {
+	return func(next doAction) doAction {
+		return func(ctx context.Context, state RetryState) error {
+			if c.RateLimiter == nil {
+				return next(ctx, state)
+			}
+			if !c.RateLimiter.Acquire(ctx) {
+				if c.Instrumenter != nil {
+					c.Instrumenter.OnRateLimitExceeded(ctx, state)
+				}
+				return ErrRateLimitExceeded
+			}
+			return next(ctx, state)
+		}
 	}
 }
 
@@ -361,9 +383,13 @@ func (c *Config) bulkheadMiddleware() middleware {
 			if c.Bulkhead == nil {
 				return next(ctx, state)
 			}
-			return c.Bulkhead.Execute(ctx, func() error {
+			err := c.Bulkhead.Execute(ctx, func() error {
 				return next(ctx, state)
 			})
+			if errors.Is(err, ErrBulkheadFull) && c.Instrumenter != nil {
+				c.Instrumenter.OnBulkheadFull(ctx, state)
+			}
+			return err
 		}
 	}
 }
@@ -431,6 +457,12 @@ func (c *Config) executeHedged(ctx context.Context, action doAction) error {
 	// Build attempt pipeline (everything except the outer retry loop).
 	// For hedging, the retry loop is handled by executeHedged itself.
 	h := action
+	if c.RateLimiter != nil {
+		h = c.rateLimiterMiddleware()(h)
+	}
+	if c.Bulkhead != nil {
+		h = c.bulkheadMiddleware()(h)
+	}
 	if c.Timeout > 0 {
 		h = c.timeoutMiddleware(c.Timeout)(h)
 	}

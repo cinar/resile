@@ -191,6 +191,9 @@ func (m *mockInstrumenter) AfterAttempt(ctx context.Context, state RetryState) {
 	m.afterCount++
 }
 
+func (m *mockInstrumenter) OnBulkheadFull(ctx context.Context, state RetryState)     {}
+func (m *mockInstrumenter) OnRateLimitExceeded(ctx context.Context, state RetryState) {}
+
 func TestRetryLoop_Instrumentation(t *testing.T) {
 	t.Parallel()
 
@@ -362,7 +365,9 @@ func (n *nameCaptureInstrumenter) BeforeAttempt(ctx context.Context, state Retry
 	*n.name = state.Name
 	return ctx
 }
-func (n *nameCaptureInstrumenter) AfterAttempt(ctx context.Context, state RetryState) {}
+func (n *nameCaptureInstrumenter) AfterAttempt(ctx context.Context, state RetryState)       {}
+func (n *nameCaptureInstrumenter) OnBulkheadFull(ctx context.Context, state RetryState)     {}
+func (n *nameCaptureInstrumenter) OnRateLimitExceeded(ctx context.Context, state RetryState) {}
 
 func TestDoHedged_SuccessFirstAttempt(t *testing.T) {
 	t.Parallel()

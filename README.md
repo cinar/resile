@@ -23,15 +23,17 @@
   - [Handling Rate Limits (Retry-After)](#5-handling-rate-limits-retry-after)
   - [Aborting Retries (Pushback Signal)](#6-aborting-retries-pushback-signal)
   - [Fallback Strategies](#7-fallback-strategies)
-  - [Layered Defense with Circuit Breaker](#8-layered-defense-with-circuit-breaker)
-  - [Macro-Level Protection (Adaptive Retries)](#9-macro-level-protection-adaptive-retries)
-  - [Structured Logging & Telemetry](#10-structured-logging--telemetry)
-  - [Panic Recovery ("Let It Crash")](#11-panic-recovery-let-it-crash)
-  - [Fast Unit Testing](#12-fast-unit-testing)
-  - [Reusable Clients & Dependency Injection](#13-reusable-clients--dependency-injection)
-  - [Marking Errors as Fatal](#14-marking-errors-as-fatal)
-  - [Custom Error Filtering](#16-custom-error-filtering)
-  - [Policy Composition & Chaining](#17-policy-composition--chaining)
+  - [Bulkhead Pattern](#8-bulkhead-pattern)
+  - [Rate Limiting Pattern](#9-rate-limiting-pattern)
+  - [Layered Defense with Circuit Breaker](#10-layered-defense-with-circuit-breaker)
+  - [Macro-Level Protection (Adaptive Retries)](#11-macro-level-protection-adaptive-retries)
+  - [Structured Logging & Telemetry](#12-structured-logging--telemetry)
+  - [Panic Recovery ("Let It Crash")](#13-panic-recovery-let-it-crash)
+  - [Fast Unit Testing](#14-fast-unit-testing)
+  - [Reusable Clients & Dependency Injection](#15-reusable-clients--dependency-injection)
+  - [Marking Errors as Fatal](#16-marking-errors-as-fatal)
+  - [Custom Error Filtering](#17-custom-error-filtering)
+  - [Policy Composition & Chaining](#18-policy-composition--chaining)
   - [Configuration Reference](#configuration-reference)
 
 - [Architecture & Design](#architecture--design)
@@ -184,7 +186,27 @@ data, err := resile.Do(ctx, fetchData,
 )
 ```
 
-### 8. Layered Defense with Circuit Breaker
+### 8. Bulkhead Pattern
+Isolate failures by limiting the number of concurrent executions to a specific resource.
+
+```go
+// Shared bulkhead with capacity of 10
+bh := resile.NewBulkhead(10)
+
+err := resile.DoErr(ctx, action, resile.WithBulkheadInstance(bh))
+```
+
+### 9. Rate Limiting Pattern
+Control the rate of executions using a time-based token bucket (e.g., requests per second).
+
+```go
+// Limit to 100 requests per second
+rl := resile.NewRateLimiter(100, time.Second)
+
+err := resile.DoErr(ctx, action, resile.WithRateLimiterInstance(rl))
+```
+
+### 10. Layered Defense with Circuit Breaker
 Combine retries (for transient blips) with a circuit breaker (for systemic outages).
 
 ```go

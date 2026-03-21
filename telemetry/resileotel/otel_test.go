@@ -59,4 +59,8 @@ func TestOtelInstrumenter_Detailed(t *testing.T) {
 	// Test with NextDelay
 	state.NextDelay = 1 * time.Second
 	instr.AfterAttempt(ctx, state)
+
+	// Test Bulkhead and RateLimit hooks
+	instr.OnBulkheadFull(ctx, state)
+	instr.OnRateLimitExceeded(ctx, state)
 }

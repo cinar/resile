@@ -134,6 +134,36 @@ func WithBulkhead(capacity uint) Option {
 	}
 }
 
+// WithBulkheadInstance integrates a shared bulkhead into the execution.
+func WithBulkheadInstance(bh *Bulkhead) Option {
+	return func(c *Config) {
+		c.Bulkhead = bh
+		if c.pipeline != nil {
+			c.pipeline = append(c.pipeline, c.bulkheadMiddleware())
+		}
+	}
+}
+
+// WithRateLimiter integrates a rate limiter into the execution.
+func WithRateLimiter(limit float64, interval time.Duration) Option {
+	return func(c *Config) {
+		c.RateLimiter = NewRateLimiter(limit, interval)
+		if c.pipeline != nil {
+			c.pipeline = append(c.pipeline, c.rateLimiterMiddleware())
+		}
+	}
+}
+
+// WithRateLimiterInstance integrates a shared rate limiter into the execution.
+func WithRateLimiterInstance(rl *RateLimiter) Option {
+	return func(c *Config) {
+		c.RateLimiter = rl
+		if c.pipeline != nil {
+			c.pipeline = append(c.pipeline, c.rateLimiterMiddleware())
+		}
+	}
+}
+
 // WithTimeout sets a timeout for the execution.
 func WithTimeout(timeout time.Duration) Option {
 	return func(c *Config) {
