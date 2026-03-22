@@ -28,7 +28,7 @@ func main() {
 		if err != nil {
 			fmt.Printf("Request %d: Rate limited - %v\n", i, err)
 		}
-		
+
 		// Wait a bit to see the refill in action
 		time.Sleep(50 * time.Millisecond)
 	}

@@ -42,7 +42,7 @@ func (rl *RateLimiter) Acquire(ctx context.Context) bool {
 
 	now := time.Now()
 	elapsed := now.Sub(rl.lastRefillAt)
-	
+
 	// Refill tokens based on elapsed time.
 	refill := float64(elapsed) / float64(rl.interval) * rl.limit
 	if refill > 0 {
