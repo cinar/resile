@@ -53,3 +53,15 @@ func (s *slogInstrumenter) AfterAttempt(ctx context.Context, state resile.RetryS
 
 	s.logger.LogAttrs(ctx, level, msg, attrs...)
 }
+
+func (s *slogInstrumenter) OnBulkheadFull(ctx context.Context, state resile.RetryState) {
+	s.logger.WarnContext(ctx, "resile bulkhead capacity reached",
+		slog.String("resile.name", state.Name),
+	)
+}
+
+func (s *slogInstrumenter) OnRateLimitExceeded(ctx context.Context, state resile.RetryState) {
+	s.logger.WarnContext(ctx, "resile rate limit exceeded",
+		slog.String("resile.name", state.Name),
+	)
+}

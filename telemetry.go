@@ -34,4 +34,8 @@ type Instrumenter interface {
 	BeforeAttempt(ctx context.Context, state RetryState) context.Context
 	// AfterAttempt is called after each execution attempt.
 	AfterAttempt(ctx context.Context, state RetryState)
+	// OnBulkheadFull is called when the bulkhead capacity is reached.
+	OnBulkheadFull(ctx context.Context, state RetryState)
+	// OnRateLimitExceeded is called when the rate limit is exceeded.
+	OnRateLimitExceeded(ctx context.Context, state RetryState)
 }

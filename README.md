@@ -23,15 +23,19 @@
   - [Handling Rate Limits (Retry-After)](#5-handling-rate-limits-retry-after)
   - [Aborting Retries (Pushback Signal)](#6-aborting-retries-pushback-signal)
   - [Fallback Strategies](#7-fallback-strategies)
-  - [Layered Defense with Circuit Breaker](#8-layered-defense-with-circuit-breaker)
-  - [Macro-Level Protection (Adaptive Retries)](#9-macro-level-protection-adaptive-retries)
-  - [Structured Logging & Telemetry](#10-structured-logging--telemetry)
-  - [Panic Recovery ("Let It Crash")](#11-panic-recovery-let-it-crash)
-  - [Fast Unit Testing](#12-fast-unit-testing)
-  - [Reusable Clients & Dependency Injection](#13-reusable-clients--dependency-injection)
-  - [Marking Errors as Fatal](#14-marking-errors-as-fatal)
-  - [Custom Error Filtering](#15-custom-error-filtering)
-- [Configuration Reference](#configuration-reference)
+  - [Bulkhead Pattern](#8-bulkhead-pattern)
+  - [Rate Limiting Pattern](#9-rate-limiting-pattern)
+  - [Layered Defense with Circuit Breaker](#10-layered-defense-with-circuit-breaker)
+  - [Macro-Level Protection (Adaptive Retries)](#11-macro-level-protection-adaptive-retries)
+  - [Structured Logging & Telemetry](#12-structured-logging--telemetry)
+  - [Panic Recovery ("Let It Crash")](#13-panic-recovery-let-it-crash)
+  - [Fast Unit Testing](#14-fast-unit-testing)
+  - [Reusable Clients & Dependency Injection](#15-reusable-clients--dependency-injection)
+  - [Marking Errors as Fatal](#16-marking-errors-as-fatal)
+  - [Custom Error Filtering](#17-custom-error-filtering)
+  - [Policy Composition & Chaining](#18-policy-composition--chaining)
+  - [Configuration Reference](#configuration-reference)
+
 - [Architecture & Design](#architecture--design)
 - [License](#license)
 
@@ -66,6 +70,8 @@ Want to learn more about the philosophy behind Resile and advanced resilience pa
 * [Beating Tail Latency: A Guide to Request Hedging in Go Microservices](https://dev.to/onurcinar/beating-tail-latency-a-guide-to-request-hedging-in-go-microservices-p81)
 * [Preventing Microservice Meltdowns: Adaptive Retries and Circuit Breakers in Go](https://dev.to/onurcinar/preventing-microservice-meltdowns-adaptive-retries-and-circuit-breakers-in-go-30ho)
 * [Self-Healing State Machines: Resilient State Transitions in Go](https://dev.to/onurcinar/self-healing-state-machines-resilient-state-transitions-in-go-3e0)
+* [Stop the Domino Effect: Bulkhead Isolation in Go](docs/articles/bulkhead-isolation.md)
+* [Respecting Boundaries: Precise Rate Limiting in Go](docs/articles/rate-limiting.md)
 
 
 ## Examples
@@ -182,7 +188,31 @@ data, err := resile.Do(ctx, fetchData,
 )
 ```
 
-### 8. Layered Defense with Circuit Breaker
+### 8. Bulkhead Pattern
+Isolate failures by limiting the number of concurrent executions to a specific resource.
+
+```go
+// Shared bulkhead with capacity of 10
+bh := resile.NewBulkhead(10)
+
+err := resile.DoErr(ctx, action, resile.WithBulkheadInstance(bh))
+```
+
+[Read more: Stop the Domino Effect: Bulkhead Isolation in Go](docs/articles/bulkhead-isolation.md)
+
+### 9. Rate Limiting Pattern
+Control the rate of executions using a time-based token bucket (e.g., requests per second).
+
+```go
+// Limit to 100 requests per second
+rl := resile.NewRateLimiter(100, time.Second)
+
+err := resile.DoErr(ctx, action, resile.WithRateLimiterInstance(rl))
+```
+
+[Read more: Respecting Boundaries: Precise Rate Limiting in Go](docs/articles/rate-limiting.md)
+
+### 10. Layered Defense with Circuit Breaker
 Combine retries (for transient blips) with a circuit breaker (for systemic outages).
 
 ```go
@@ -197,7 +227,7 @@ cb := circuit.New(circuit.Config{
 err := resile.DoErr(ctx, action, resile.WithCircuitBreaker(cb))
 ```
 
-### 9. Macro-Level Protection (Adaptive Retries)
+### 11. Macro-Level Protection (Adaptive Retries)
 Prevent "retry storms" by using a token bucket that is shared across your entire cluster of clients. If the downstream service is degraded, the bucket will quickly deplete, causing clients to fail fast locally instead of hammering the service.
 
 ```go
@@ -207,7 +237,7 @@ bucket := resile.DefaultAdaptiveBucket()
 err := resile.DoErr(ctx, action, resile.WithAdaptiveBucket(bucket))
 ```
 
-### 10. Structured Logging & Telemetry
+### 12. Structured Logging & Telemetry
 Integrate with `slog` or `OpenTelemetry` without bloating your core dependencies.
 
 ```go
@@ -220,7 +250,7 @@ resile.Do(ctx, action,
 )
 ```
 
-### 11. Panic Recovery ("Let It Crash")
+### 13. Panic Recovery ("Let It Crash")
 Convert unexpected Go panics into retryable errors, allowing your application to reset to a known good state without a hard crash.
 
 ```go
@@ -230,7 +260,7 @@ val, err := resile.Do(ctx, riskyAction,
 )
 ```
 
-### 12. Fast Unit Testing
+### 14. Fast Unit Testing
 Never let retry timers slow down your CI. Use `WithTestingBypass` to make all retries execute instantly.
 
 ```go
@@ -242,7 +272,7 @@ func TestMyService(t *testing.T) {
 }
 ```
 
-### 13. Reusable Clients & Dependency Injection
+### 15. Reusable Clients & Dependency Injection
 Use `resile.New()` to create a `Retryer` interface for cleaner code architecture and easier testing.
 
 ```go
@@ -258,7 +288,7 @@ err := retryer.DoErr(ctx, func(ctx context.Context) error {
 })
 ```
 
-### 14. Marking Errors as Fatal
+### 16. Marking Errors as Fatal
 Sometimes you know an error is terminal and shouldn't be retried (e.g., "Invalid API Key"). Use `resile.FatalError()` to abort the retry loop immediately.
 
 ```go
@@ -271,18 +301,7 @@ err := resile.DoErr(ctx, func(ctx context.Context) error {
 })
 ```
 
-### 15. Resilient State Machines
-Build self-healing state machines where every transition is protected by resilience policies, inspired by Erlang's `gen_statem`.
-
-```go
-// Create a state machine: initialState, initialData, transitionFunc, opts
-sm := resile.NewStateMachine(Disconnected, data, transition, resile.WithMaxAttempts(3))
-
-// Transitions are protected by retries, circuit breakers, etc.
-err := sm.Handle(ctx, Connect)
-```
-
-### 16. Custom Error Filtering
+### 17. Custom Error Filtering
 Control which errors trigger a retry using `WithRetryIf` (for exact matches) or `WithRetryIfFunc` (for custom logic like checking status codes).
 
 ```go
@@ -297,6 +316,31 @@ err := resile.DoErr(ctx, action,
 )
 ```
 
+### 18. Policy Composition & Chaining
+While `Do` and `DoErr` provide a fixed execution order (Bulkhead -> Retry -> Timeout -> Circuit Breaker), you can use the `Policy` API to define a custom order of resilience layers. Policies are thread-safe and reusable.
+
+The order of options in `NewPolicy` determines the execution hierarchy from **outermost to innermost**.
+
+```go
+// Define a reusable policy: Bulkhead(20) -> Circuit Breaker -> Retry(3) -> Timeout(1s)
+standardPolicy := resile.NewPolicy(
+    resile.WithBulkhead(20),
+    resile.WithCircuitBreaker(cb),
+    resile.WithRetry(3),
+    resile.WithTimeout(1*time.Second),
+)
+
+// Reuse across multiple calls
+val, err := standardPolicy.Do(ctx, action)
+err := standardPolicy.DoErr(ctx, actionErr)
+```
+
+In this example:
+1. **Bulkhead** is the outermost layer. It limits total concurrent calls to the whole stack.
+2. **Circuit Breaker** wraps the retry loop. If the whole retry loop fails multiple times, the circuit opens.
+3. **Retry** wraps the timeout and the action. Each retry attempt has its own timeout.
+4. **Timeout** is the innermost layer. It limits how long each individual attempt can take.
+
 ---
 
 ## Configuration Reference
@@ -305,6 +349,7 @@ err := resile.DoErr(ctx, action,
 | :--- | :--- | :--- |
 | `WithName(string)` | Identifies the operation in logs/metrics. | `""` |
 | `WithMaxAttempts(uint)` | Total number of attempts (initial + retries). | `5` |
+| `WithRetry(uint)` | Alias for `WithMaxAttempts` that adds a retry policy. | - |
 | `WithBaseDelay(duration)` | Initial backoff duration. | `100ms` |
 | `WithMaxDelay(duration)` | Maximum possible backoff duration. | `30s` |
 | `WithBackoff(Backoff)` | Custom backoff algorithm (e.g. constant). | `Full Jitter` |
@@ -312,6 +357,11 @@ err := resile.DoErr(ctx, action,
 | `WithRetryIf(error)` | Only retry if `errors.Is(err, target)`. | All non-fatal |
 | `WithRetryIfFunc(func)` | Custom logic to decide if an error is retriable. | `nil` |
 | `WithCircuitBreaker(cb)` | Attaches a circuit breaker state machine. | `nil` |
+| `WithBulkhead(uint)` | Limits concurrent executions. | `nil` |
+| `WithBulkheadInstance(b)` | Attaches a shared bulkhead instance. | `nil` |
+| `WithRateLimiter(limit, interval)` | Limits execution rate (token bucket). | `nil` |
+| `WithRateLimiterInstance(rl)` | Attaches a shared rate limiter instance. | `nil` |
+| `WithTimeout(duration)` | Sets an execution timeout for the operation. | `0` |
 | `WithAdaptiveBucket(b)` | Attaches a token bucket for adaptive retries. | `nil` |
 | `WithInstrumenter(inst)` | Attaches telemetry (slog/OTel/Prometheus). | `nil` |
 | `WithFallback(f)` | Sets a generic fallback function. | `nil` |

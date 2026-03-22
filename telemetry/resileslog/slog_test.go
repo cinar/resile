@@ -86,6 +86,26 @@ func TestSlogInstrumenter_AfterAttempt_Success(t *testing.T) {
 	}
 }
 
+func TestSlogInstrumenter_OnBulkheadFull(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	instr := New(logger)
+	instr.OnBulkheadFull(context.Background(), resile.RetryState{Name: "test-bh"})
+	if !contains(buf.String(), `"resile.name":"test-bh"`) || !contains(buf.String(), "resile bulkhead capacity reached") {
+		t.Errorf("expected bulkhead log, got: %s", buf.String())
+	}
+}
+
+func TestSlogInstrumenter_OnRateLimitExceeded(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	instr := New(logger)
+	instr.OnRateLimitExceeded(context.Background(), resile.RetryState{Name: "test-rl"})
+	if !contains(buf.String(), `"resile.name":"test-rl"`) || !contains(buf.String(), "resile rate limit exceeded") {
+		t.Errorf("expected rate limit log, got: %s", buf.String())
+	}
+}
+
 func contains(s, substr string) bool {
 	return bytes.Contains([]byte(s), []byte(substr))
 }

@@ -51,6 +51,10 @@ type Config struct {
 	Fallback       any
 	AdaptiveBucket *AdaptiveBucket
 	RecoverPanics  bool
+	Bulkhead       *Bulkhead
+	Timeout        time.Duration
+	RateLimiter    *RateLimiter
+	pipeline       []middleware
 }
 
 // Do executes an action with retry logic using the provided options.
@@ -224,76 +228,218 @@ type doAction func(context.Context, RetryState) error
 
 // execute executes the action with the provided configuration and context.
 func (c *Config) execute(ctx context.Context, action doAction) error {
-	var lastErr error
-	start := time.Now()
-
-	for attempt := uint(0); attempt < c.MaxAttempts; attempt++ {
-		state := RetryState{
-			Name:          c.Name,
-			Attempt:       attempt,
-			MaxAttempts:   c.MaxAttempts,
-			LastError:     lastErr,
-			TotalDuration: time.Since(start),
-		}
-
-		// If a circuit breaker is configured, wrap the attempt execution.
-		if c.CircuitBreaker != nil {
-			err := c.CircuitBreaker.Execute(func() error {
-				return c.executeOnce(ctx, action, state)
-			})
-			lastErr = err
-		} else {
-			lastErr = c.executeOnce(ctx, action, state)
-		}
-
-		// Success terminates the loop.
-		if lastErr == nil {
-			if c.AdaptiveBucket != nil {
-				c.AdaptiveBucket.AddSuccessToken()
-			}
-			return nil
-		}
-
-		// Check for circuit open to avoid retries.
-		if errors.Is(lastErr, circuit.ErrCircuitOpen) {
-			return lastErr
-		}
-
-		// Check if we should retry based on the error policy.
-		if !c.Policy.shouldRetry(lastErr) {
-			return lastErr
-		}
-
-		// If this was the last attempt, don't sleep.
-		if attempt+1 >= c.MaxAttempts {
-			break
-		}
-
-		// Check adaptive bucket before committing to next attempt.
-		if c.AdaptiveBucket != nil && !c.AdaptiveBucket.AcquireRetryToken() {
-			break
-		}
-
-		// Calculate the next delay.
-		delay := c.Backoff.Next(attempt)
-
-		// Check for Retry-After override.
-		var retryAfter RetryAfterError
-		if errors.As(lastErr, &retryAfter) {
-			if retryAfter.CancelAllRetries() {
-				return lastErr
-			}
-			delay = retryAfter.RetryAfter()
-		}
-
-		// Sleep safely with context awareness.
-		if err := sleep(ctx, delay); err != nil {
-			// Context canceled during sleep.
-			return errors.Join(lastErr, err)
-		}
+	if len(c.pipeline) == 0 {
+		c.buildDefaultPipeline()
 	}
 
-	return lastErr
+	h := action
+	for i := len(c.pipeline) - 1; i >= 0; i-- {
+		h = c.pipeline[i](h)
+	}
+
+	return h(ctx, RetryState{
+		Name:        c.Name,
+		MaxAttempts: c.MaxAttempts,
+	})
+}
+
+// buildDefaultPipeline builds the legacy hardcoded pipeline order.
+// Order: Bulkhead -> Retry ( CircuitBreaker -> Instrumenter -> PanicRecovery )
+func (c *Config) buildDefaultPipeline() {
+	if c.RateLimiter != nil {
+		c.pipeline = append(c.pipeline, c.rateLimiterMiddleware())
+	}
+
+	if c.Bulkhead != nil {
+		c.pipeline = append(c.pipeline, c.bulkheadMiddleware())
+	}
+
+	// Retry is the primary driver in the legacy model.
+	c.pipeline = append(c.pipeline, c.retryMiddleware())
+
+	if c.Timeout > 0 {
+		c.pipeline = append(c.pipeline, c.timeoutMiddleware(c.Timeout))
+	}
+
+	if c.CircuitBreaker != nil {
+		c.pipeline = append(c.pipeline, c.circuitBreakerMiddleware())
+	}
+
+	c.pipeline = append(c.pipeline, c.instrumenterMiddleware())
+
+	if c.RecoverPanics {
+		c.pipeline = append(c.pipeline, c.panicRecoveryMiddleware())
+	}
+}
+
+func (c *Config) rateLimiterMiddleware() middleware {
+	return func(next doAction) doAction {
+		return func(ctx context.Context, state RetryState) error {
+			if c.RateLimiter == nil {
+				return next(ctx, state)
+			}
+			if !c.RateLimiter.Acquire(ctx) {
+				if c.Instrumenter != nil {
+					c.Instrumenter.OnRateLimitExceeded(ctx, state)
+				}
+				return ErrRateLimitExceeded
+			}
+			return next(ctx, state)
+		}
+	}
+}
+
+func (c *Config) timeoutMiddleware(timeout time.Duration) middleware {
+	return func(next doAction) doAction {
+		return func(ctx context.Context, state RetryState) error {
+			ctx, cancel := context.WithTimeout(ctx, timeout)
+			defer cancel()
+			return next(ctx, state)
+		}
+	}
+}
+
+func (c *Config) retryMiddleware() middleware {
+	return func(next doAction) doAction {
+		return func(ctx context.Context, state RetryState) error {
+			var lastErr error
+			start := time.Now()
+
+			for attempt := uint(0); attempt < c.MaxAttempts; attempt++ {
+				state.Attempt = attempt
+				state.LastError = lastErr
+				state.TotalDuration = time.Since(start)
+
+				lastErr = next(ctx, state)
+
+				// Success terminates the loop.
+				if lastErr == nil {
+					if c.AdaptiveBucket != nil {
+						c.AdaptiveBucket.AddSuccessToken()
+					}
+					return nil
+				}
+
+				// Check for circuit open to avoid retries.
+				if errors.Is(lastErr, circuit.ErrCircuitOpen) {
+					return lastErr
+				}
+
+				// Check if we should retry based on the error policy.
+				if !c.Policy.shouldRetry(lastErr) {
+					return lastErr
+				}
+
+				// If this was the last attempt, don't sleep.
+				if attempt+1 >= c.MaxAttempts {
+					break
+				}
+
+				// Check adaptive bucket before committing to next attempt.
+				if c.AdaptiveBucket != nil && !c.AdaptiveBucket.AcquireRetryToken() {
+					break
+				}
+
+				// Calculate the next delay.
+				delay := c.Backoff.Next(attempt)
+
+				// Check for Retry-After override.
+				var retryAfter RetryAfterError
+				if errors.As(lastErr, &retryAfter) {
+					if retryAfter.CancelAllRetries() {
+						return lastErr
+					}
+					delay = retryAfter.RetryAfter()
+				}
+
+				// Sleep safely with context awareness.
+				if err := sleep(ctx, delay); err != nil {
+					// Context canceled during sleep.
+					return errors.Join(lastErr, err)
+				}
+			}
+
+			return lastErr
+		}
+	}
+}
+
+func (c *Config) circuitBreakerMiddleware() middleware {
+	return func(next doAction) doAction {
+		return func(ctx context.Context, state RetryState) error {
+			if c.CircuitBreaker == nil {
+				return next(ctx, state)
+			}
+			return c.CircuitBreaker.Execute(func() error {
+				return next(ctx, state)
+			})
+		}
+	}
+}
+
+func (c *Config) bulkheadMiddleware() middleware {
+	return func(next doAction) doAction {
+		return func(ctx context.Context, state RetryState) error {
+			if c.Bulkhead == nil {
+				return next(ctx, state)
+			}
+			err := c.Bulkhead.Execute(ctx, func() error {
+				return next(ctx, state)
+			})
+			if errors.Is(err, ErrBulkheadFull) && c.Instrumenter != nil {
+				c.Instrumenter.OnBulkheadFull(ctx, state)
+			}
+			return err
+		}
+	}
+}
+
+func (c *Config) instrumenterMiddleware() middleware {
+	return func(next doAction) doAction {
+		return func(ctx context.Context, state RetryState) error {
+			if c.Instrumenter == nil {
+				return next(ctx, state)
+			}
+			ctx = c.Instrumenter.BeforeAttempt(ctx, state)
+			err := next(ctx, state)
+			state.LastError = err
+			c.Instrumenter.AfterAttempt(ctx, state)
+			return err
+		}
+	}
+}
+
+func (c *Config) panicRecoveryMiddleware() middleware {
+	return func(next doAction) doAction {
+		return func(ctx context.Context, state RetryState) (err error) {
+			defer func() {
+				if r := recover(); r != nil {
+					err = &PanicError{
+						Value:      r,
+						StackTrace: string(debug.Stack()),
+					}
+				}
+			}()
+			return next(ctx, state)
+		}
+	}
+}
+
+func (c *Config) fallbackMiddleware() middleware {
+	return func(next doAction) doAction {
+		return func(ctx context.Context, state RetryState) error {
+			err := next(ctx, state)
+			if err != nil && c.Fallback != nil {
+				// Fallback for DoErr
+				if f, ok := c.Fallback.(func(context.Context, error) error); ok {
+					return f(ctx, err)
+				}
+				// Note: Fallback for value-returning Do is handled at the top-level
+				// in DoState to preserve type safety without reflection.
+			}
+			return err
+		}
+	}
 }
 
 // executeHedged executes the action using speculative retries (hedging).
@@ -307,6 +453,26 @@ func (c *Config) executeHedged(ctx context.Context, action doAction) error {
 	var attemptsStarted uint
 
 	start := time.Now()
+
+	// Build attempt pipeline (everything except the outer retry loop).
+	// For hedging, the retry loop is handled by executeHedged itself.
+	h := action
+	if c.RateLimiter != nil {
+		h = c.rateLimiterMiddleware()(h)
+	}
+	if c.Bulkhead != nil {
+		h = c.bulkheadMiddleware()(h)
+	}
+	if c.Timeout > 0 {
+		h = c.timeoutMiddleware(c.Timeout)(h)
+	}
+	if c.CircuitBreaker != nil {
+		h = c.circuitBreakerMiddleware()(h)
+	}
+	h = c.instrumenterMiddleware()(h)
+	if c.RecoverPanics {
+		h = c.panicRecoveryMiddleware()(h)
+	}
 
 	for {
 		if attemptsStarted < c.MaxAttempts {
@@ -328,14 +494,7 @@ func (c *Config) executeHedged(ctx context.Context, action doAction) error {
 						NextDelay:     c.HedgingDelay,
 					}
 
-					var err error
-					if c.CircuitBreaker != nil {
-						err = c.CircuitBreaker.Execute(func() error {
-							return c.executeOnce(ctx, action, state)
-						})
-					} else {
-						err = c.executeOnce(ctx, action, state)
-					}
+					err := h(ctx, state)
 
 					select {
 					case results <- err:
@@ -407,40 +566,6 @@ func (c *Config) executeHedged(ctx context.Context, action doAction) error {
 	}
 
 	return lastErr
-}
-
-// executeOnce performs a single attempt and triggers instrumentation.
-func (c *Config) executeOnce(ctx context.Context, action doAction, state RetryState) (err error) {
-	// Invoke instrumentation before attempt.
-	if c.Instrumenter != nil {
-		ctx = c.Instrumenter.BeforeAttempt(ctx, state)
-	}
-
-	// Execute the user closure.
-	if c.RecoverPanics {
-		defer func() {
-			if r := recover(); r != nil {
-				err = &PanicError{
-					Value:      r,
-					StackTrace: string(debug.Stack()),
-				}
-				// Update state for AfterAttempt.
-				state.LastError = err
-				if c.Instrumenter != nil {
-					c.Instrumenter.AfterAttempt(ctx, state)
-				}
-			}
-		}()
-	}
-	err = action(ctx, state)
-
-	// Update state for AfterAttempt.
-	state.LastError = err
-	if c.Instrumenter != nil {
-		c.Instrumenter.AfterAttempt(ctx, state)
-	}
-
-	return err
 }
 
 type contextKey string

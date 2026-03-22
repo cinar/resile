@@ -19,6 +19,9 @@ type Option func(*Config)
 func WithFallback[T any](f func(context.Context, error) (T, error)) Option {
 	return func(c *Config) {
 		c.Fallback = f
+		if c.pipeline != nil {
+			c.pipeline = append(c.pipeline, c.fallbackMiddleware())
+		}
 	}
 }
 
@@ -26,6 +29,9 @@ func WithFallback[T any](f func(context.Context, error) (T, error)) Option {
 func WithFallbackErr(f func(context.Context, error) error) Option {
 	return func(c *Config) {
 		c.Fallback = f
+		if c.pipeline != nil {
+			c.pipeline = append(c.pipeline, c.fallbackMiddleware())
+		}
 	}
 }
 
@@ -40,6 +46,19 @@ func WithName(name string) Option {
 func WithMaxAttempts(attempts uint) Option {
 	return func(c *Config) {
 		c.MaxAttempts = attempts
+		if c.pipeline != nil {
+			c.pipeline = append(c.pipeline, c.retryMiddleware())
+		}
+	}
+}
+
+// WithRetry sets the maximum number of execution attempts and adds a retry policy to the pipeline.
+func WithRetry(attempts uint) Option {
+	return func(c *Config) {
+		c.MaxAttempts = attempts
+		if c.pipeline != nil {
+			c.pipeline = append(c.pipeline, c.retryMiddleware())
+		}
 	}
 }
 
@@ -89,6 +108,9 @@ func WithRetryIfFunc(f func(error) bool) Option {
 func WithInstrumenter(instr Instrumenter) Option {
 	return func(c *Config) {
 		c.Instrumenter = instr
+		if c.pipeline != nil {
+			c.pipeline = append(c.pipeline, c.instrumenterMiddleware())
+		}
 	}
 }
 
@@ -96,6 +118,59 @@ func WithInstrumenter(instr Instrumenter) Option {
 func WithCircuitBreaker(cb *circuit.Breaker) Option {
 	return func(c *Config) {
 		c.CircuitBreaker = cb
+		if c.pipeline != nil {
+			c.pipeline = append(c.pipeline, c.circuitBreakerMiddleware())
+		}
+	}
+}
+
+// WithBulkhead integrates a bulkhead into the execution.
+func WithBulkhead(capacity uint) Option {
+	return func(c *Config) {
+		c.Bulkhead = NewBulkhead(capacity)
+		if c.pipeline != nil {
+			c.pipeline = append(c.pipeline, c.bulkheadMiddleware())
+		}
+	}
+}
+
+// WithBulkheadInstance integrates a shared bulkhead into the execution.
+func WithBulkheadInstance(bh *Bulkhead) Option {
+	return func(c *Config) {
+		c.Bulkhead = bh
+		if c.pipeline != nil {
+			c.pipeline = append(c.pipeline, c.bulkheadMiddleware())
+		}
+	}
+}
+
+// WithRateLimiter integrates a rate limiter into the execution.
+func WithRateLimiter(limit float64, interval time.Duration) Option {
+	return func(c *Config) {
+		c.RateLimiter = NewRateLimiter(limit, interval)
+		if c.pipeline != nil {
+			c.pipeline = append(c.pipeline, c.rateLimiterMiddleware())
+		}
+	}
+}
+
+// WithRateLimiterInstance integrates a shared rate limiter into the execution.
+func WithRateLimiterInstance(rl *RateLimiter) Option {
+	return func(c *Config) {
+		c.RateLimiter = rl
+		if c.pipeline != nil {
+			c.pipeline = append(c.pipeline, c.rateLimiterMiddleware())
+		}
+	}
+}
+
+// WithTimeout sets a timeout for the execution.
+func WithTimeout(timeout time.Duration) Option {
+	return func(c *Config) {
+		c.Timeout = timeout
+		if c.pipeline != nil {
+			c.pipeline = append(c.pipeline, c.timeoutMiddleware(timeout))
+		}
 	}
 }
 
@@ -120,5 +195,8 @@ func WithAdaptiveBucket(bucket *AdaptiveBucket) Option {
 func WithPanicRecovery() Option {
 	return func(c *Config) {
 		c.RecoverPanics = true
+		if c.pipeline != nil {
+			c.pipeline = append(c.pipeline, c.panicRecoveryMiddleware())
+		}
 	}
 }

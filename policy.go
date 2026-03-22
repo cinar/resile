@@ -5,6 +5,7 @@
 package resile
 
 import (
+	"context"
 	"errors"
 	"time"
 )
@@ -79,3 +80,34 @@ func (p *retryPolicy) shouldRetry(err error) bool {
 
 	return false
 }
+
+// Policy represents a composed resilience strategy.
+// It is thread-safe and reusable across multiple calls.
+type Policy struct {
+	config *Config
+}
+
+// NewPolicy creates a new Policy with the given options.
+// The order of options determines the execution order from outermost to innermost.
+// Example: NewPolicy(WithFallback(f), WithRetry(3)) results in Fallback(Retry(Action)).
+func NewPolicy(opts ...Option) *Policy {
+	c := DefaultConfig()
+	c.pipeline = make([]middleware, 0)
+	for _, opt := range opts {
+		opt(c)
+	}
+	return &Policy{config: c}
+}
+
+// Do executes an action within the resilience policy.
+func (p *Policy) Do(ctx context.Context, action func(context.Context) (any, error)) (any, error) {
+	return p.config.Do(ctx, action)
+}
+
+// DoErr executes an action within the resilience policy.
+func (p *Policy) DoErr(ctx context.Context, action func(context.Context) error) error {
+	return p.config.DoErr(ctx, action)
+}
+
+// middleware defines a function that wraps a doAction with additional resilience logic.
+type middleware func(doAction) doAction
