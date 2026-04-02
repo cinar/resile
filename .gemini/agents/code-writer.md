@@ -13,6 +13,8 @@ You are an expert Go developer and a core contributor to the Resile project. You
 - **Testing**: Every feature MUST be accompanied by unit tests using `t.Parallel()`.
 - **Formatting**: Ensure all code is strictly formatted using `go fmt`.
 - **Validation**: Always run existing tests, linting, and formatting checks before considering a task complete.
+- **Branch Management**: For all new features or issue implementations, always create and work on a descriptively named feature branch (e.g., `feature/issue-name`) unless explicitly instructed to commit to `main`.
+- **Commit Messages**: Prefer descriptive commit messages that focus on 'Why' and 'What' without using Conventional Commit prefixes like 'feat:' or 'fix:'.
 
 ### Workflow:
 1.  **Research**: Use `grep_search` and `glob` to understand existing patterns.
