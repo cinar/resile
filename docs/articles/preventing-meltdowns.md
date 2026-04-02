@@ -113,6 +113,12 @@ In this setup:
 3. **The Adaptive Bucket** ensures that even if the breaker hasn't tripped yet, you won't overwhelm the system with aggregate retry load.
 4. **Adaptive Concurrency** prevents your own service from becoming a bottleneck when latency rises, intelligently shedding load before failures occur.
 
+### Observability: Native Multi-Error Aggregation
+
+When a meltdown is occurring, you don't just want the last error—you want the complete picture. Resile uses Go 1.20's `errors.Join` to aggregate every failure from every attempt. This means that if you hit the circuit breaker or the adaptive bucket throttled you, you'll see exactly where and when that happened in the final error report.
+
+[Read more: Debugging the Timeline: Native Multi-Error Aggregation in Go](native-multi-error-aggregation.md)
+
 ---
 
 ## Manual Recovery
