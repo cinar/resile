@@ -12,3 +12,11 @@ This repository is governed by the architectural specification in `SPEC.md`.
 7.  **Coverage**: Keep the code coverage above 90% at all times.
 8.  **Formatting**: Run Go source code formatting at the end.
 9.  **Articles**: With every new feature, write an article about it in `docs/articles/`.
+
+## Strategic Delegation Mandate
+To maintain session efficiency and adhere to specialized workflows (like branch management and cross-reference integrity), you MUST delegate all implementation and documentation tasks to the respective sub-agents:
+
+- **Implementation:** Always delegate the implementation of features, bug fixes, and unit tests to the `code-writer` sub-agent.
+- **Documentation:** Always delegate the creation of technical articles, README updates, and documentation cross-referencing to the `technical-writer` sub-agent.
+- **Orchestration:** Act as the high-level orchestrator. Your responsibility is to define the strategy, coordinate the sub-agents, and perform the final verification of their work against the original request.
+- **Direct Action:** Only perform implementation or documentation tasks directly in the main session if a sub-agent is technically unable to complete a specific, narrow task or if the user explicitly overrides this mandate with a direct instruction for a specific turn.
