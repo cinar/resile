@@ -27,13 +27,14 @@
   - [Rate Limiting Pattern](#9-rate-limiting-pattern)
   - [Layered Defense with Circuit Breaker](#10-layered-defense-with-circuit-breaker)
   - [Macro-Level Protection (Adaptive Retries)](#11-macro-level-protection-adaptive-retries)
-  - [Structured Logging & Telemetry](#12-structured-logging--telemetry)
-  - [Panic Recovery ("Let It Crash")](#13-panic-recovery-let-it-crash)
-  - [Fast Unit Testing](#14-fast-unit-testing)
-  - [Reusable Clients & Dependency Injection](#15-reusable-clients--dependency-injection)
-  - [Marking Errors as Fatal](#16-marking-errors-as-fatal)
-  - [Custom Error Filtering](#17-custom-error-filtering)
-  - [Policy Composition & Chaining](#18-policy-composition--chaining)
+  - [Adaptive Concurrency (TCP-Vegas)](#12-adaptive-concurrency-tcp-vegas)
+  - [Structured Logging & Telemetry](#13-structured-logging--telemetry)
+  - [Panic Recovery ("Let It Crash")](#14-panic-recovery-let-it-crash)
+  - [Fast Unit Testing](#15-fast-unit-testing)
+  - [Reusable Clients & Dependency Injection](#16-reusable-clients--dependency-injection)
+  - [Marking Errors as Fatal](#17-marking-errors-as-fatal)
+  - [Custom Error Filtering](#18-custom-error-filtering)
+  - [Policy Composition & Chaining](#19-policy-composition--chaining)
   - [Configuration Reference](#configuration-reference)
 
 - [Architecture & Design](#architecture--design)
@@ -72,6 +73,7 @@ Want to learn more about the philosophy behind Resile and advanced resilience pa
 * [Self-Healing State Machines: Resilient State Transitions in Go](https://dev.to/onurcinar/self-healing-state-machines-resilient-state-transitions-in-go-3e0)
 * [Stop the Domino Effect: Bulkhead Isolation in Go](docs/articles/bulkhead-isolation.md)
 * [Respecting Boundaries: Precise Rate Limiting in Go](docs/articles/rate-limiting.md)
+* [Beyond Static Limits: Adaptive Concurrency with TCP-Vegas in Go](docs/articles/adaptive-concurrency.md)
 
 
 ## Examples
@@ -85,6 +87,7 @@ The [examples/](examples/) directory contains standalone programs showing how to
 - **[Stateful Rotation](examples/stateful/main.go)**: Rotating API endpoints using `RetryState`.
 - **[Circuit Breaker](examples/circuitbreaker/main.go)**: Layering defensive strategies.
 - **[Adaptive Retries](examples/adaptiveretry/main.go)**: Preventing retry storms with a token bucket.
+- **[Adaptive Concurrency](examples/adaptiveconcurrency/main.go)**: Dynamic concurrency limits based on latency (TCP-Vegas).
 - **[Pushback Signal](examples/pushback/main.go)**: Aborting retries immediately using `CancelAllRetries`.
 - **[Panic Recovery](examples/panicrecovery/main.go)**: Implementing Erlang's "Let It Crash" philosophy.
 - **[State Machine](examples/statemachine/main.go)**: Building resilient state machines inspired by Erlang's `gen_statem`.
@@ -237,7 +240,17 @@ bucket := resile.DefaultAdaptiveBucket()
 err := resile.DoErr(ctx, action, resile.WithAdaptiveBucket(bucket))
 ```
 
-### 12. Structured Logging & Telemetry
+### 12. Adaptive Concurrency (TCP-Vegas)
+Automatically adjust concurrency limits based on Round-Trip Time (RTT). This pattern, inspired by TCP-Vegas, applies Little's Law to prevent cascading failures without manual rate-limit configuration. It increases concurrency when latency is stable and decreases it multiplicatively when queuing is detected.
+
+```go
+// Shared limiter across multiple calls
+al := resile.NewAdaptiveLimiter()
+
+err := resile.DoErr(ctx, action, resile.WithAdaptiveLimiterInstance(al))
+```
+
+### 13. Structured Logging & Telemetry
 Integrate with `slog` or `OpenTelemetry` without bloating your core dependencies.
 
 ```go
@@ -250,7 +263,7 @@ resile.Do(ctx, action,
 )
 ```
 
-### 13. Panic Recovery ("Let It Crash")
+### 14. Panic Recovery ("Let It Crash")
 Convert unexpected Go panics into retryable errors, allowing your application to reset to a known good state without a hard crash.
 
 ```go
@@ -260,7 +273,7 @@ val, err := resile.Do(ctx, riskyAction,
 )
 ```
 
-### 14. Fast Unit Testing
+### 15. Fast Unit Testing
 Never let retry timers slow down your CI. Use `WithTestingBypass` to make all retries execute instantly.
 
 ```go
@@ -272,7 +285,7 @@ func TestMyService(t *testing.T) {
 }
 ```
 
-### 15. Reusable Clients & Dependency Injection
+### 16. Reusable Clients & Dependency Injection
 Use `resile.New()` to create a `Retryer` interface for cleaner code architecture and easier testing.
 
 ```go
@@ -288,7 +301,7 @@ err := retryer.DoErr(ctx, func(ctx context.Context) error {
 })
 ```
 
-### 16. Marking Errors as Fatal
+### 17. Marking Errors as Fatal
 Sometimes you know an error is terminal and shouldn't be retried (e.g., "Invalid API Key"). Use `resile.FatalError()` to abort the retry loop immediately.
 
 ```go
@@ -301,7 +314,7 @@ err := resile.DoErr(ctx, func(ctx context.Context) error {
 })
 ```
 
-### 17. Custom Error Filtering
+### 18. Custom Error Filtering
 Control which errors trigger a retry using `WithRetryIf` (for exact matches) or `WithRetryIfFunc` (for custom logic like checking status codes).
 
 ```go
@@ -316,7 +329,7 @@ err := resile.DoErr(ctx, action,
 )
 ```
 
-### 18. Policy Composition & Chaining
+### 19. Policy Composition & Chaining
 While `Do` and `DoErr` provide a fixed execution order (Bulkhead -> Retry -> Timeout -> Circuit Breaker), you can use the `Policy` API to define a custom order of resilience layers. Policies are thread-safe and reusable.
 
 The order of options in `NewPolicy` determines the execution hierarchy from **outermost to innermost**.

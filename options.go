@@ -164,6 +164,26 @@ func WithRateLimiterInstance(rl *RateLimiter) Option {
 	}
 }
 
+// WithAdaptiveLimiter integrates an adaptive concurrency limiter into the execution.
+func WithAdaptiveLimiter() Option {
+	return func(c *Config) {
+		c.AdaptiveLimiter = NewAdaptiveLimiter()
+		if c.pipeline != nil {
+			c.pipeline = append(c.pipeline, c.adaptiveLimiterMiddleware())
+		}
+	}
+}
+
+// WithAdaptiveLimiterInstance integrates a shared adaptive concurrency limiter into the execution.
+func WithAdaptiveLimiterInstance(al *AdaptiveLimiter) Option {
+	return func(c *Config) {
+		c.AdaptiveLimiter = al
+		if c.pipeline != nil {
+			c.pipeline = append(c.pipeline, c.adaptiveLimiterMiddleware())
+		}
+	}
+}
+
 // WithTimeout sets a timeout for the execution.
 func WithTimeout(timeout time.Duration) Option {
 	return func(c *Config) {
