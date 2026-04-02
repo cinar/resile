@@ -54,6 +54,31 @@ By sharing the instance, you ensure that the *total* concurrency hitting the Inv
 
 ---
 
+## Static vs. Adaptive Bulkheads
+
+Traditional bulkheads are **static**. You pick a number (like 20) and hope it stays the right choice as your traffic and infrastructure change.
+
+But what if your downstream service is sometimes fast and sometimes slow? Or what if you move your database to a faster region? In these cases, a static limit might be too conservative (wasting capacity) or too aggressive (causing queuing).
+
+### The Dynamic Alternative: Adaptive Concurrency
+
+Resile also provides an **Adaptive Concurrency Limiter** (TCP-Vegas style). It automatically discovers the optimal concurrency limit by monitoring Round-Trip Time (RTT). It increases the limit when latency is stable and decreases it multiplicatively when queuing is detected.
+
+```go
+// Shared limiter that dynamically adjusts its capacity
+al := resile.NewAdaptiveLimiter()
+
+err := resile.DoErr(ctx, action, 
+    resile.WithAdaptiveLimiterInstance(al),
+)
+```
+
+If your infrastructure is highly dynamic, consider using the `AdaptiveLimiter` as a "smart bulkhead" that tunes itself in real-time.
+
+[Read more: Beyond Static Limits: Adaptive Concurrency with TCP-Vegas in Go](adaptive-concurrency.md)
+
+---
+
 ## Why "Fail-Fast" Matters
 
 When a bulkhead is full, Resile immediately returns `resile.ErrBulkheadFull`. 

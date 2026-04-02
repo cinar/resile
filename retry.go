@@ -39,22 +39,37 @@ func (p *PanicError) Error() string {
 
 // Config represents the configuration for the retry execution.
 type Config struct {
-	Name           string
-	MaxAttempts    uint
-	BaseDelay      time.Duration
-	MaxDelay       time.Duration
-	HedgingDelay   time.Duration
-	Backoff        Backoff
-	Policy         *retryPolicy
-	Instrumenter   Instrumenter
-	CircuitBreaker *circuit.Breaker
-	Fallback       any
-	AdaptiveBucket *AdaptiveBucket
-	RecoverPanics  bool
-	Bulkhead       *Bulkhead
-	Timeout        time.Duration
-	RateLimiter    *RateLimiter
-	pipeline       []middleware
+	Name            string
+	MaxAttempts     uint
+	BaseDelay       time.Duration
+	MaxDelay        time.Duration
+	HedgingDelay    time.Duration
+	Backoff         Backoff
+	Policy          *retryPolicy
+	Instrumenter    Instrumenter
+	CircuitBreaker  *circuit.Breaker
+	Fallback        any
+	AdaptiveBucket  *AdaptiveBucket
+	RecoverPanics   bool
+	Bulkhead        *Bulkhead
+	Timeout         time.Duration
+	RateLimiter     *RateLimiter
+	AdaptiveLimiter *AdaptiveLimiter
+	pipeline        []middleware
+}
+
+func (c *Config) adaptiveLimiterMiddleware() middleware {
+	return func(next doAction) doAction {
+		return func(ctx context.Context, state RetryState) error {
+			if c.AdaptiveLimiter == nil {
+				return next(ctx, state)
+			}
+
+			return c.AdaptiveLimiter.Execute(ctx, func() error {
+				return next(ctx, state)
+			})
+		}
+	}
 }
 
 // Do executes an action with retry logic using the provided options.
@@ -248,6 +263,10 @@ func (c *Config) execute(ctx context.Context, action doAction) error {
 func (c *Config) buildDefaultPipeline() {
 	if c.RateLimiter != nil {
 		c.pipeline = append(c.pipeline, c.rateLimiterMiddleware())
+	}
+
+	if c.AdaptiveLimiter != nil {
+		c.pipeline = append(c.pipeline, c.adaptiveLimiterMiddleware())
 	}
 
 	if c.Bulkhead != nil {
