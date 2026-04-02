@@ -14,7 +14,7 @@ Here is how to prevent microservice meltdowns in Go using [Resile](https://githu
 
 Imagine you have 100 instances of your API. Each instance is configured to retry 3 times. If the database slows down, you suddenly have **300 extra requests** hitting it exactly when it's struggling to recover.
 
-Even with jitter, the aggregate load can be enough to keep the database in a "failed" state indefinitely. To solve this, we need two patterns working together: **Adaptive Retries** and **Circuit Breakers**.
+Even with jitter, the aggregate load can be enough to keep the database in a "failed" state indefinitely. To solve this, we need three patterns working together: **Adaptive Retries**, **Circuit Breakers**, and **Adaptive Concurrency Control**.
 
 ---
 
@@ -66,15 +66,33 @@ err := resile.DoErr(ctx, action,
 
 ---
 
+## 3. Adaptive Concurrency (The Buffer)
+
+Inspired by TCP-Vegas, **Adaptive Concurrency Control** dynamically adjusts your concurrency limits based on Round-Trip Time (RTT). 
+
+While a Circuit Breaker is an "all-or-nothing" kill switch, Adaptive Concurrency is a "sliding scale." It detects when your downstream dependencies are beginning to queue (latency rises) and slashes your concurrency limit to match the actual available capacity.
+
+```go
+// Create a shared limiter: discovery optimal limit in real-time
+al := resile.NewAdaptiveLimiter()
+
+err := resile.DoErr(ctx, action, 
+    resile.WithAdaptiveLimiterInstance(al),
+)
+```
+
+---
+
 ## The Ultimate Defense: Layered Resilience
 
-The real power of Resile comes from combining these patterns. You can layer Retries, Circuit Breakers, and Adaptive Buckets into a single execution strategy.
+The real power of Resile comes from combining these patterns. You can layer Retries, Circuit Breakers, Adaptive Buckets, and Adaptive Concurrency into a single execution strategy.
 
 ```go
 err := resile.DoErr(ctx, action,
     resile.WithMaxAttempts(3),           // Layer 1: Handle random blips
     resile.WithCircuitBreaker(cb),      // Layer 2: Stop hitting a dead service
-    resile.WithAdaptiveBucket(bucket),  // Layer 3: Prevent cluster-wide storms
+    resile.WithAdaptiveBucket(bucket),  // Layer 3: Prevent cluster-wide retry storms
+    resile.WithAdaptiveLimiterInstance(al), // Layer 4: Match concurrency to downstream capacity
 )
 ```
 
@@ -82,6 +100,7 @@ In this setup:
 1. **Retries** handle the "one-off" network glitches.
 2. **The Circuit Breaker** stops you from wasting time on a service that is clearly down.
 3. **The Adaptive Bucket** ensures that even if the breaker hasn't tripped yet, you won't overwhelm the system with aggregate retry load.
+4. **Adaptive Concurrency** prevents your own service from becoming a bottleneck when latency rises, intelligently shedding load before failures occur.
 
 ---
 
