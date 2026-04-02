@@ -389,7 +389,7 @@ func (c *Config) circuitBreakerMiddleware() middleware {
 			if c.CircuitBreaker == nil {
 				return next(ctx, state)
 			}
-			return c.CircuitBreaker.Execute(func() error {
+			return c.CircuitBreaker.Execute(ctx, func() error {
 				return next(ctx, state)
 			})
 		}
