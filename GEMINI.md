@@ -17,6 +17,8 @@ This repository is governed by the architectural specification in `SPEC.md`.
 1.  **Issue Research**: When given an issue number, use `gh issue view <number>` to gather requirements and context.
 2.  **Branch Management**: Always create a new feature branch (e.g., `feat/issue-<number>`) before making any changes.
 3.  **Planning Phase**: You MUST use `enter_plan_mode` to research, design, and present a comprehensive strategy for user approval before starting any implementation.
+4.  **Committing Changes**: Follow the project's commit message style (concise and descriptive). DO NOT use prefixes like `feat:`, `fix:`, or `docs:`.
+5.  **Pull Requests**: Always create a pull request using `gh pr create`. If the work is related to an issue, include `fixes #<number>` in the PR body to automatically link and close the issue upon merging.
 
 ## Strategic Delegation Mandate
 To maintain session efficiency and adhere to specialized workflows (like branch management and cross-reference integrity), you MUST delegate all implementation, review, and documentation tasks to the respective sub-agents:
