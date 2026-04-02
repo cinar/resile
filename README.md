@@ -71,6 +71,7 @@ Want to learn more about the philosophy behind Resile and advanced resilience pa
 * [Beating Tail Latency: A Guide to Request Hedging in Go Microservices](https://dev.to/onurcinar/beating-tail-latency-a-guide-to-request-hedging-in-go-microservices-p81)
 * [Preventing Microservice Meltdowns: Adaptive Retries and Circuit Breakers in Go](https://dev.to/onurcinar/preventing-microservice-meltdowns-adaptive-retries-and-circuit-breakers-in-go-30ho)
 * [Self-Healing State Machines: Resilient State Transitions in Go](https://dev.to/onurcinar/self-healing-state-machines-resilient-state-transitions-in-go-3e0)
+* [Resilience Beyond Counters: Sliding Window Circuit Breakers in Go](docs/articles/sliding-window-circuit-breakers.md)
 * [Stop the Domino Effect: Bulkhead Isolation in Go](docs/articles/bulkhead-isolation.md)
 * [Respecting Boundaries: Precise Rate Limiting in Go](docs/articles/rate-limiting.md)
 * [Beyond Static Limits: Adaptive Concurrency with TCP-Vegas in Go](docs/articles/adaptive-concurrency.md)
@@ -216,19 +217,33 @@ err := resile.DoErr(ctx, action, resile.WithRateLimiterInstance(rl))
 [Read more: Respecting Boundaries: Precise Rate Limiting in Go](docs/articles/rate-limiting.md)
 
 ### 10. Layered Defense with Circuit Breaker
-Combine retries (for transient blips) with a circuit breaker (for systemic outages).
+Combine retries (for transient blips) with a mathematically rigorous sliding window circuit breaker (for systemic outages). Resile supports both **Count-based** and **Time-based** sliding windows.
 
 ```go
 import "github.com/cinar/resile/circuit"
 
+// Create a circuit breaker that trips if >50% of the last 100 calls fail.
 cb := circuit.New(circuit.Config{
-    FailureThreshold: 5,
-    ResetTimeout:     30 * time.Second,
+    WindowType:           circuit.WindowCountBased,
+    WindowSize:           100,
+    FailureRateThreshold: 50.0,
+    MinimumCalls:         10,
+    ResetTimeout:         30 * time.Second,
 })
 
-// Returns circuit.ErrCircuitOpen immediately if the downstream is failing consistently.
+// Use it within a Resile policy
 err := resile.DoErr(ctx, action, resile.WithCircuitBreaker(cb))
+
+// OR use it standalone with the context-aware Execute method
+err = cb.Execute(ctx, func() error {
+    return db.Ping()
+})
+
+// Manually reset the breaker if needed
+cb.Reset()
 ```
+
+[Read more: Resilience Beyond Counters: Sliding Window Circuit Breakers in Go](docs/articles/sliding-window-circuit-breakers.md)
 
 ### 11. Macro-Level Protection (Adaptive Retries)
 Prevent "retry storms" by using a token bucket that is shared across your entire cluster of clients. If the downstream service is degraded, the bucket will quickly deplete, causing clients to fail fast locally instead of hammering the service.

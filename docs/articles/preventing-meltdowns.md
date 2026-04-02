@@ -46,19 +46,30 @@ err := resile.DoErr(ctx, action,
 
 While retries assume "eventual success," a **Circuit Breaker** assumes "statistical failure." 
 
-If a service fails 5 times in a row, the breaker "trips" (opens). For the next 30 seconds, every call to that service will fail **instantly** without even trying to hit the network. This protects your downstream infrastructure from useless traffic and saves your local resources (threads, memory, sockets).
+Resile implements a **Sliding Window** circuit breaker. If the failure rate of the last 100 calls exceeds 50%, the breaker "trips" (opens). For the next 30 seconds, every call to that service will fail **instantly** without even trying to hit the network. This protects your downstream infrastructure from useless traffic and saves your local resources (threads, memory, sockets).
 
-### Layering it in Resile:
+### Standalone Usage:
 
 ```go
 import "github.com/cinar/resile/circuit"
 
-// Create a breaker: Trip after 5 failures, wait 30s to retry
+// Create a breaker with a sliding window
 cb := circuit.New(circuit.Config{
-    FailureThreshold: 5,
-    ResetTimeout:     30 * time.Second,
+    WindowType:           circuit.WindowCountBased,
+    WindowSize:           100,
+    FailureRateThreshold: 50.0,
+    ResetTimeout:         30 * time.Second,
 })
 
+// Use the context-aware Execute method
+err := cb.Execute(ctx, func() error {
+    return callRemoteService()
+})
+```
+
+### Layering in Resile Policies:
+
+```go
 err := resile.DoErr(ctx, action, 
     resile.WithCircuitBreaker(cb),
 )
@@ -104,13 +115,22 @@ In this setup:
 
 ---
 
+## Manual Recovery
+
+If you know a service has recovered before the circuit breaker's timeout, you can manually reset it:
+
+```go
+// Force the circuit to Closed state
+cb.Reset()
+```
+
+---
+
 ## Observability: Seeing the Shield in Action
 
 Protecting your system is great, but *knowing* you’re being protected is better. 
 
 If you use Resile's `slog` or `OpenTelemetry` integrations, you'll see exactly when these shields activate. Your logs will show `retry.throlled=true` when the adaptive bucket kicks in, or your traces will show a `circuit.open` error when the breaker prevents a call.
-
-This visibility is crucial for SREs to understand *why* traffic is failing and *how* the system is self-healing.
 
 ---
 
@@ -121,7 +141,5 @@ Building resilient microservices isn't just about making individual calls "smart
 By combining opinionated retries, circuit breakers, and adaptive throttling, Resile gives you a production-grade resilience engine that scales with your infrastructure.
 
 **Try Resile today:** [github.com/cinar/resile](https://github.com/cinar/resile)
-
-How do you prevent "retry storms" in your Go clusters? Let's discuss in the comments!
 
 #golang #microservices #sre #devops #backend #distributedsystems

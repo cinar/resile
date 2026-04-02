@@ -14,7 +14,8 @@ import (
 func TestPolicyComposition_Order(t *testing.T) {
 	t.Run("Retry wraps CircuitBreaker", func(t *testing.T) {
 		cb := circuit.New(circuit.Config{
-			FailureThreshold: 10,
+			MinimumCalls:         10,
+			FailureRateThreshold: 100,
 		})
 
 		// Retry(3) wraps CircuitBreaker.
@@ -47,7 +48,8 @@ func TestPolicyComposition_Order(t *testing.T) {
 
 	t.Run("CircuitBreaker wraps Retry", func(t *testing.T) {
 		cb := circuit.New(circuit.Config{
-			FailureThreshold: 2,
+			MinimumCalls:         2,
+			FailureRateThreshold: 100,
 		})
 
 		// CircuitBreaker wraps Retry(3).
@@ -121,7 +123,8 @@ func TestPolicyComposition_Bulkhead(t *testing.T) {
 
 func TestLegacyNew_DefaultOrder(t *testing.T) {
 	cb := circuit.New(circuit.Config{
-		FailureThreshold: 2,
+		MinimumCalls:         1,
+		FailureRateThreshold: 100,
 	})
 
 	// Legacy New should use default order: Retry wraps CB.

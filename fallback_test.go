@@ -48,7 +48,8 @@ func TestDo_Fallback(t *testing.T) {
 
 	t.Run("Fallback_CircuitOpen", func(t *testing.T) {
 		cb := circuit.New(circuit.Config{
-			FailureThreshold: 1,
+			MinimumCalls:         1,
+			FailureRateThreshold: 100,
 		})
 
 		// Trigger circuit open
