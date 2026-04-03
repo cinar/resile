@@ -90,6 +90,9 @@ func TestChaosLatencyInjection(t *testing.T) {
 		c.Chaos = injector
 	})
 	duration = time.Since(start)
+	if err != nil {
+		t.Errorf("expected no error, got %v", err)
+	}
 	if duration >= latency {
 		t.Errorf("expected no latency, got %v", duration)
 	}
