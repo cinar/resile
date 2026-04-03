@@ -58,6 +58,13 @@ data, err := resile.DoHedged(ctx, func(ctx context.Context) (*User, error) {
 3. If the first request hasn't finished, it starts a **second** request.
 4. As soon as one returns a successful result, Resile **cancels the context** of the other request and returns the data to you.
 
+### What if they all fail? (Multi-Error Aggregation)
+In a hedged scenario, you might have multiple concurrent requests failing for different reasons. Resile uses Go 1.20's `errors.Join` to aggregate every failure from every parallel attempt. 
+
+If the primary request fails with a "Network Timeout" and the hedged request fails with a "Service Unavailable," you get both in your error report. This preserves the complete timeline of the failure across all parallel paths.
+
+[Read more: Debugging the Timeline: Native Multi-Error Aggregation in Go](native-multi-error-aggregation.md)
+
 ---
 
 ## Picking the Right Hedging Delay

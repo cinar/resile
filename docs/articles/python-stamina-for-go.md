@@ -43,6 +43,7 @@ It looks and feels like a simple function call, but under the hood, Resile is do
 *   **AWS Full Jitter Backoff**: Spreading out retries to protect your database.
 *   **Context-Awareness**: Cancelling retries immediately if the request times out.
 *   **Memory Safety**: Using managed timers to prevent goroutine leaks.
+*   **Native Multi-Error Aggregation**: Using Go 1.20's `errors.Join` to return the complete timeline of failures across all attempts.
 
 ---
 

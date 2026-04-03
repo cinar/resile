@@ -321,32 +321,36 @@ func (c *Config) timeoutMiddleware(timeout time.Duration) middleware {
 func (c *Config) retryMiddleware() middleware {
 	return func(next doAction) doAction {
 		return func(ctx context.Context, state RetryState) error {
-			var lastErr error
+			errs := make([]error, 0, c.MaxAttempts)
 			start := time.Now()
 
 			for attempt := uint(0); attempt < c.MaxAttempts; attempt++ {
 				state.Attempt = attempt
-				state.LastError = lastErr
+				if len(errs) > 0 {
+					state.LastError = errs[len(errs)-1]
+				}
 				state.TotalDuration = time.Since(start)
 
-				lastErr = next(ctx, state)
+				err := next(ctx, state)
 
 				// Success terminates the loop.
-				if lastErr == nil {
+				if err == nil {
 					if c.AdaptiveBucket != nil {
 						c.AdaptiveBucket.AddSuccessToken()
 					}
 					return nil
 				}
 
+				errs = append(errs, err)
+
 				// Check for circuit open to avoid retries.
-				if errors.Is(lastErr, circuit.ErrCircuitOpen) {
-					return lastErr
+				if errors.Is(err, circuit.ErrCircuitOpen) {
+					return errors.Join(errs...)
 				}
 
 				// Check if we should retry based on the error policy.
-				if !c.Policy.shouldRetry(lastErr) {
-					return lastErr
+				if !c.Policy.shouldRetry(err) {
+					return errors.Join(errs...)
 				}
 
 				// If this was the last attempt, don't sleep.
@@ -364,9 +368,9 @@ func (c *Config) retryMiddleware() middleware {
 
 				// Check for Retry-After override.
 				var retryAfter RetryAfterError
-				if errors.As(lastErr, &retryAfter) {
+				if errors.As(err, &retryAfter) {
 					if retryAfter.CancelAllRetries() {
-						return lastErr
+						return errors.Join(errs...)
 					}
 					delay = retryAfter.RetryAfter()
 				}
@@ -374,11 +378,11 @@ func (c *Config) retryMiddleware() middleware {
 				// Sleep safely with context awareness.
 				if err := sleep(ctx, delay); err != nil {
 					// Context canceled during sleep.
-					return errors.Join(lastErr, err)
+					return errors.Join(append(errs, err)...)
 				}
 			}
 
-			return lastErr
+			return errors.Join(errs...)
 		}
 	}
 }
@@ -467,7 +471,7 @@ func (c *Config) executeHedged(ctx context.Context, action doAction) error {
 	defer cancel()
 
 	results := make(chan error, c.MaxAttempts)
-	var lastErr error
+	errs := make([]error, 0, c.MaxAttempts)
 	var inFlight int
 	var attemptsStarted uint
 
@@ -541,7 +545,7 @@ func (c *Config) executeHedged(ctx context.Context, action doAction) error {
 			if timer != nil {
 				timer.Stop()
 			}
-			return ctx.Err()
+			return errors.Join(append(errs, ctx.Err())...)
 		case err := <-results:
 			if timer != nil {
 				timer.Stop()
@@ -554,25 +558,25 @@ func (c *Config) executeHedged(ctx context.Context, action doAction) error {
 				}
 				return nil
 			}
-			lastErr = err
+			errs = append(errs, err)
 
 			// Check for circuit open to avoid further retries.
-			if errors.Is(lastErr, circuit.ErrCircuitOpen) {
+			if errors.Is(err, circuit.ErrCircuitOpen) {
 				cancel()
-				return lastErr
+				return errors.Join(errs...)
 			}
 
 			// Check for pushback signal to cancel all retries.
 			var retryAfter RetryAfterError
-			if errors.As(lastErr, &retryAfter) && retryAfter.CancelAllRetries() {
+			if errors.As(err, &retryAfter) && retryAfter.CancelAllRetries() {
 				cancel()
-				return lastErr
+				return errors.Join(errs...)
 			}
 
 			// If error is not retryable, cancel all and return.
-			if !c.Policy.shouldRetry(lastErr) {
+			if !c.Policy.shouldRetry(err) {
 				cancel()
-				return lastErr
+				return errors.Join(errs...)
 			}
 
 			// If no more attempts are in-flight, start next one immediately.
@@ -584,7 +588,7 @@ func (c *Config) executeHedged(ctx context.Context, action doAction) error {
 		}
 	}
 
-	return lastErr
+	return errors.Join(errs...)
 }
 
 type contextKey string

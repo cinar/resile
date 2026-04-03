@@ -35,6 +35,7 @@
   - [Marking Errors as Fatal](#17-marking-errors-as-fatal)
   - [Custom Error Filtering](#18-custom-error-filtering)
   - [Policy Composition & Chaining](#19-policy-composition--chaining)
+  - [Native Multi-Error Aggregation](#20-native-multi-error-aggregation)
   - [Configuration Reference](#configuration-reference)
 
 - [Architecture & Design](#architecture--design)
@@ -66,15 +67,16 @@ In distributed systems, transient failures are a mathematical certainty. Resile 
 
 Want to learn more about the philosophy behind Resile and advanced resilience patterns in Go? Check out these deep dives:
 
-* [Stop Writing Manual Retry Loops in Go: Why Your Current Logic is Probably Dangerous](https://dev.to/onurcinar/stop-writing-manual-retry-loops-in-go-why-your-current-logic-is-probably-dangerous-5bj5)
-* [Python's Stamina for Go: Bringing Ergonomic Resilience to Gophers](https://dev.to/onurcinar/pythons-stamina-for-go-bringing-ergonomic-resilience-to-gophers-1lf2)
-* [Beating Tail Latency: A Guide to Request Hedging in Go Microservices](https://dev.to/onurcinar/beating-tail-latency-a-guide-to-request-hedging-in-go-microservices-p81)
-* [Preventing Microservice Meltdowns: Adaptive Retries and Circuit Breakers in Go](https://dev.to/onurcinar/preventing-microservice-meltdowns-adaptive-retries-and-circuit-breakers-in-go-30ho)
-* [Self-Healing State Machines: Resilient State Transitions in Go](https://dev.to/onurcinar/self-healing-state-machines-resilient-state-transitions-in-go-3e0)
+* [Stop Writing Manual Retry Loops in Go: Why Your Current Logic is Probably Dangerous](docs/articles/stop-writing-manual-loops.md)
+* [Python's Stamina for Go: Bringing Ergonomic Resilience to Gophers](docs/articles/python-stamina-for-go.md)
+* [Beating Tail Latency: A Guide to Request Hedging in Go Microservices](docs/articles/beating-tail-latency.md)
+* [Preventing Microservice Meltdowns: Adaptive Retries and Circuit Breakers in Go](docs/articles/preventing-meltdowns.md)
+* [Self-Healing State Machines: Resilient State Transitions in Go](docs/articles/self-healing-state-machines.md)
 * [Resilience Beyond Counters: Sliding Window Circuit Breakers in Go](docs/articles/sliding-window-circuit-breakers.md)
 * [Stop the Domino Effect: Bulkhead Isolation in Go](docs/articles/bulkhead-isolation.md)
 * [Respecting Boundaries: Precise Rate Limiting in Go](docs/articles/rate-limiting.md)
 * [Beyond Static Limits: Adaptive Concurrency with TCP-Vegas in Go](docs/articles/adaptive-concurrency.md)
+* [Debugging the Timeline: Native Multi-Error Aggregation in Go](docs/articles/native-multi-error-aggregation.md)
 
 
 ## Examples
@@ -98,7 +100,7 @@ The [examples/](examples/) directory contains standalone programs showing how to
 ## Common Use Cases
 
 ### 1. Simple Retries
-Retry a simple operation that only returns an error.
+Retry a simple operation that only returns an error. If all retries fail, Resile returns an aggregated error containing the failures from every attempt.
 
 ```go
 err := resile.DoErr(ctx, func(ctx context.Context) error {
@@ -363,11 +365,28 @@ val, err := standardPolicy.Do(ctx, action)
 err := standardPolicy.DoErr(ctx, actionErr)
 ```
 
-In this example:
-1. **Bulkhead** is the outermost layer. It limits total concurrent calls to the whole stack.
-2. **Circuit Breaker** wraps the retry loop. If the whole retry loop fails multiple times, the circuit opens.
-3. **Retry** wraps the timeout and the action. Each retry attempt has its own timeout.
-4. **Timeout** is the innermost layer. It limits how long each individual attempt can take.
+### 20. Native Multi-Error Aggregation
+Resile uses Go 1.20's `errors.Join` to aggregate and return the complete timeline of failures in both standard and hedged retry loops.
+
+```go
+err := resile.DoErr(ctx, action, resile.WithMaxAttempts(3))
+
+if err != nil {
+    // Check if a specific error occurred in any of the attempts
+    if errors.Is(err, context.DeadlineExceeded) {
+        fmt.Println("At least one attempt timed out")
+    }
+
+    // Iterate over the chronological timeline of failures
+    if multi, ok := err.(interface{ Unwrap() []error }); ok {
+        for i, e := range multi.Unwrap() {
+            fmt.Printf("Attempt %d failed: %v\n", i+1, e)
+        }
+    }
+}
+```
+
+[Read more: Debugging the Timeline: Native Multi-Error Aggregation in Go](docs/articles/native-multi-error-aggregation.md)
 
 ---
 
