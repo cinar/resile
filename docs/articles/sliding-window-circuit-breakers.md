@@ -93,6 +93,16 @@ cb.Reset()
 
 ---
 
+## Testing Your Breaker: Chaos Engineering
+
+How do you know your failure thresholds are tuned correctly? Instead of waiting for a real outage, you can use Resile's native **Chaos Engineering** features to synthetically trip your breaker.
+
+By injecting a high `ErrorProbability` using the `WithChaos` option, you can verify exactly how your application behaves when the circuit opens and how gracefully it recovers during the `Half-Open` state.
+
+[Read more: Native Chaos Engineering: Testing Resilience with Fault & Latency Injection](chaos-engineering.md)
+
+---
+
 ## Efficiency Matters: Performance in Go
 
 Implementing a sliding window can be expensive if not done carefully. Resile’s implementation is designed for high-performance Go services:

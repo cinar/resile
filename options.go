@@ -8,6 +8,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/cinar/resile/chaos"
 	"github.com/cinar/resile/circuit"
 )
 
@@ -217,6 +218,16 @@ func WithPanicRecovery() Option {
 		c.RecoverPanics = true
 		if c.pipeline != nil {
 			c.pipeline = append(c.pipeline, c.panicRecoveryMiddleware())
+		}
+	}
+}
+
+// WithChaos integrates a chaos injector into the execution.
+func WithChaos(cfg chaos.Config) Option {
+	return func(c *Config) {
+		c.Chaos = chaos.NewInjector(cfg)
+		if c.pipeline != nil {
+			c.pipeline = append(c.pipeline, c.chaosMiddleware())
 		}
 	}
 }

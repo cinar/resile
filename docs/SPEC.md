@@ -294,6 +294,40 @@ The library permits users to register a `FallbackFunc` via functional options. T
 
 By utilizing Go's type parameters, the library ensures that the fallback function's return signature matches the primary action's signature. This allows developers to seamlessly implement patterns such as returning stale data from a local Redis cache when a primary database query fails, or returning a default configuration when a remote configuration service is unreachable.
 
+## **Chaos Engineering: Continuous Resilience Verification**
+
+To ensure that resilience policies are correctly configured and effective, the library incorporates a native **Chaos Engineering** engine. Traditional resilience testing often relies on manual failure simulation or infrastructure-level disruptions, which can be difficult to coordinate and lack granularity.
+
+### **Application-Level Fault & Latency Injection**
+
+The Chaos Injector is implemented as an optional middleware that can be integrated into any `Policy`. It allows developers to synthetically induce failure and latency directly within the application's execution path.
+
+The configuration for the chaos injector includes:
+*   **Error Probability**: The likelihood (0.0 - 1.0) of a synthetic error being returned.
+*   **Injected Error**: The specific error value to be returned when a fault is injected.
+*   **Latency Probability**: The likelihood (0.0 - 1.0) of a synthetic delay being introduced.
+*   **Latency Duration**: The duration of the synthetic delay.
+
+Go
+
+cfg := chaos.Config{
+    ErrorProbability:   0.1,
+    InjectedError:      errors.New("synthetic failure"),
+    LatencyProbability: 0.2,
+    LatencyDuration:    100 * time.Millisecond,
+}
+
+policy := resile.NewPolicy(
+    resile.WithRetry(3),
+    resile.WithChaos(cfg),
+)
+
+### **Context-Aware Latency Injection**
+
+A critical architectural mandate is that chaos injection must remain strictly context-aware. Latency is injected using a `select` block between a `time.Timer` and `ctx.Done()`. This ensures that if the overarching request timeout or cancellation occurs while a chaos delay is active, the injector exits immediately, preserving the temporal integrity of the application.
+
+By providing a native, zero-dependency chaos engine, the library enables **Continuous Resilience Verification**, allowing developers to battle-test their policies in staging or controlled production "game days" without requiring complex infrastructure-level tools.
+
 ## **Testing Strategies and Contextual Overrides**
 
 A frequent, highly disruptive pain point encountered when implementing robust retry libraries is the adverse effect they have on automated unit testing suites. If a library is configured for production with a base delay of 2 seconds and a maximum of 5 attempts, a single failing test simulating a network outage incurs an unacceptable 10-second penalty.22 Across a massive monorepo, these sleep timers compound, devastating Continuous Integration (CI) pipeline speeds.22 Python's stamina elegantly resolves this exact issue by providing global bypass switches specifically designed to deactivate delays in test environments.6
@@ -435,73 +469,4 @@ To prevent retry storms against permanently degraded dependencies, the retry eng
 
 #### **Works cited**
 
-1. How to Implement Retry with Circuit Breaker Pattern in Go \- OneUptime, accessed February 28, 2026, [https://oneuptime.com/blog/post/2026-01-30-go-retry-circuit-breaker-pattern/view](https://oneuptime.com/blog/post/2026-01-30-go-retry-circuit-breaker-pattern/view)  
-2. Retry pattern \- Azure Architecture Center | Microsoft Learn, accessed February 28, 2026, [https://learn.microsoft.com/en-us/azure/architecture/patterns/retry](https://learn.microsoft.com/en-us/azure/architecture/patterns/retry)  
-3. Exponential Backoff And Jitter | AWS Architecture Blog, accessed February 28, 2026, [https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/)  
-4. Retry Strategies: Exponential Backoff & Jitter Explained \- YouTube, accessed February 28, 2026, [https://www.youtube.com/watch?v=NByH-cau97A](https://www.youtube.com/watch?v=NByH-cau97A)  
-5. How to Build Custom Retry Middleware in Go \- OneUptime, accessed February 28, 2026, [https://oneuptime.com/blog/post/2026-02-01-go-retry-middleware/view](https://oneuptime.com/blog/post/2026-02-01-go-retry-middleware/view)  
-6. stamina · PyPI, accessed February 28, 2026, [https://pypi.org/project/stamina/](https://pypi.org/project/stamina/)  
-7. Awesome Python Library: Tenacity \- Reddit, accessed February 28, 2026, [https://www.reddit.com/r/Python/comments/1c0s3ep/awesome\_python\_library\_tenacity/](https://www.reddit.com/r/Python/comments/1c0s3ep/awesome_python_library_tenacity/)  
-8. Tenacity — Tenacity documentation, accessed February 28, 2026, [https://tenacity.readthedocs.io/](https://tenacity.readthedocs.io/)  
-9. Tenacity documentation, accessed February 28, 2026, [https://tenacity.readthedocs.io/en/stable/](https://tenacity.readthedocs.io/en/stable/)  
-10. API Reference — Tenacity documentation, accessed February 28, 2026, [https://tenacity.readthedocs.io/en/stable/api.html](https://tenacity.readthedocs.io/en/stable/api.html)  
-11. API Reference \- Tenacity documentation, accessed February 28, 2026, [https://tenacity.readthedocs.io/en/latest/api.html](https://tenacity.readthedocs.io/en/latest/api.html)  
-12. accessed December 31, 1969, [https://github.com/sethvargo/go-retry/blob/main/retry.go](https://github.com/sethvargo/go-retry/blob/main/retry.go)  
-13. hynek/stamina: Production-grade retries for Python \- GitHub, accessed February 28, 2026, [https://github.com/hynek/stamina](https://github.com/hynek/stamina)  
-14. You've Got The Stamina For This Episode \- Python Bytes Podcast, accessed February 28, 2026, [https://pythonbytes.fm/episodes/show/350/youve-got-the-stamina-for-this-episode](https://pythonbytes.fm/episodes/show/350/youve-got-the-stamina-for-this-episode)  
-15. stamina 25.2.0 documentation, accessed February 28, 2026, [https://stamina.hynek.me/](https://stamina.hynek.me/)  
-16. Instrumentation \- stamina 25.2.0 documentation \- Hynek Schlawack, accessed February 28, 2026, [https://stamina.hynek.me/en/stable/instrumentation.html](https://stamina.hynek.me/en/stable/instrumentation.html)  
-17. Stamina: Haskell library for retries \- Blog \- Cachix, accessed February 28, 2026, [https://blog.cachix.org/posts/2024-01-02-stamina-haskell-library-for-retries/](https://blog.cachix.org/posts/2024-01-02-stamina-haskell-library-for-retries/)  
-18. avast/retry-go: Simple golang library for retry mechanism \- GitHub, accessed February 28, 2026, [https://github.com/avast/retry-go](https://github.com/avast/retry-go)  
-19. retry package \- github.com/avast/retry-go \- Go Packages, accessed February 28, 2026, [https://pkg.go.dev/github.com/avast/retry-go](https://pkg.go.dev/github.com/avast/retry-go)  
-20. Best OpenTelemetry usage example in golang codebase. \- Reddit, accessed February 28, 2026, [https://www.reddit.com/r/golang/comments/1hudz5w/best\_opentelemetry\_usage\_example\_in\_golang/](https://www.reddit.com/r/golang/comments/1hudz5w/best_opentelemetry_usage_example_in_golang/)  
-21. retry package \- github.com/octo/retry \- Go Packages, accessed February 28, 2026, [https://pkg.go.dev/github.com/octo/retry](https://pkg.go.dev/github.com/octo/retry)  
-22. python retry with tenacity, disable \`wait\` for unittest \- Stack Overflow, accessed February 28, 2026, [https://stackoverflow.com/questions/47906671/python-retry-with-tenacity-disable-wait-for-unittest](https://stackoverflow.com/questions/47906671/python-retry-with-tenacity-disable-wait-for-unittest)  
-23. retry package \- github.com/sethvargo/go-retry \- Go Packages, accessed February 28, 2026, [https://pkg.go.dev/github.com/sethvargo/go-retry](https://pkg.go.dev/github.com/sethvargo/go-retry)  
-24. sethvargo/go-retry: Go library for retrying with configurable backoffs \- GitHub, accessed February 28, 2026, [https://github.com/sethvargo/go-retry](https://github.com/sethvargo/go-retry)  
-25. go-retry/retry\_test.go at main · sethvargo/go-retry \- GitHub, accessed February 28, 2026, [https://github.com/sethvargo/go-retry/blob/main/retry\_test.go](https://github.com/sethvargo/go-retry/blob/main/retry_test.go)  
-26. slok/goresilience: A library to improve the resilience of Go applications in an easy and flexible way \- GitHub, accessed February 28, 2026, [https://github.com/slok/goresilience](https://github.com/slok/goresilience)  
-27. goresilience/goresilience.go at master · slok/goresilience \- GitHub, accessed February 28, 2026, [https://github.com/slok/goresilience/blob/master/goresilience.go](https://github.com/slok/goresilience/blob/master/goresilience.go)  
-28. Goresilience a Go library to improve applications resiliency \- Xabier Larrakoetxea \- Medium, accessed February 28, 2026, [https://slok.medium.com/goresilience-a-go-library-to-improve-applications-resiliency-14d229aee385](https://slok.medium.com/goresilience-a-go-library-to-improve-applications-resiliency-14d229aee385)  
-29. circuitbreaker · GitHub Topics, accessed February 28, 2026, [https://github.com/topics/circuitbreaker?o=desc\&s=updated](https://github.com/topics/circuitbreaker?o=desc&s=updated)  
-30. Keep retrying a function in Golang \- Stack Overflow, accessed February 28, 2026, [https://stackoverflow.com/questions/67069723/keep-retrying-a-function-in-golang](https://stackoverflow.com/questions/67069723/keep-retrying-a-function-in-golang)  
-31. GoLang Generics: Practical Examples to Level Up Your Code \- DEV Community, accessed February 28, 2026, [https://dev.to/shrsv/golang-generics-practical-examples-to-level-up-your-code-4ell](https://dev.to/shrsv/golang-generics-practical-examples-to-level-up-your-code-4ell)  
-32. Retry function in Go | Redowan's Reflections, accessed February 28, 2026, [https://rednafi.com/go/retry-function/](https://rednafi.com/go/retry-function/)  
-33. Go Generics (Go ≥ 1.18): Writing Reusable, Type-Safe Code Without Compromise | by nima hashemi sajadi | Dec, 2025 | Medium, accessed February 28, 2026, [https://medium.com/@nima.hashemi/go-generics-go-1-18-writing-reusable-type-safe-code-without-compromise-4c68ced1719d](https://medium.com/@nima.hashemi/go-generics-go-1-18-writing-reusable-type-safe-code-without-compromise-4c68ced1719d)  
-34. An Introduction To Generics \- The Go Programming Language, accessed February 28, 2026, [https://go.dev/blog/intro-generics](https://go.dev/blog/intro-generics)  
-35. When To Use Generics \- The Go Programming Language, accessed February 28, 2026, [https://go.dev/blog/when-generics](https://go.dev/blog/when-generics)  
-36. Deep Dive into Go Generic Type Structures and Syntax | by Deeptiman Pattnaik | Medium, accessed February 28, 2026, [https://codingpirate.com/deep-dive-into-go-generic-type-structures-and-syntax-6f1a68e2c9c5](https://codingpirate.com/deep-dive-into-go-generic-type-structures-and-syntax-6f1a68e2c9c5)  
-37. How to implement a retry mechanism for goroutines? : r/golang \- Reddit, accessed February 28, 2026, [https://www.reddit.com/r/golang/comments/tyzxub/how\_to\_implement\_a\_retry\_mechanism\_for\_goroutines/](https://www.reddit.com/r/golang/comments/tyzxub/how_to_implement_a_retry_mechanism_for_goroutines/)  
-38. Best practice for result values when returning an error in Go \- Stack Overflow, accessed February 28, 2026, [https://stackoverflow.com/questions/54577824/best-practice-for-result-values-when-returning-an-error-in-go](https://stackoverflow.com/questions/54577824/best-practice-for-result-values-when-returning-an-error-in-go)  
-39. A functional Retry pattern \- MOBZystems, accessed February 28, 2026, [https://www.mobzystems.com/code/a-functional-retry-pattern/](https://www.mobzystems.com/code/a-functional-retry-pattern/)  
-40. How to define a generic Result type that either contains a value or an error? : r/golang, accessed February 28, 2026, [https://www.reddit.com/r/golang/comments/13sltn5/how\_to\_define\_a\_generic\_result\_type\_that\_either/](https://www.reddit.com/r/golang/comments/13sltn5/how_to_define_a_generic_result_type_that_either/)  
-41. why would one use the "Functional Options" pattern in go?, accessed February 28, 2026, [https://softwareengineering.stackexchange.com/questions/456657/why-would-one-use-the-functional-options-pattern-in-go](https://softwareengineering.stackexchange.com/questions/456657/why-would-one-use-the-functional-options-pattern-in-go)  
-42. Go Constructor, Functional Option And Builder Patterns \- Tfrain, accessed February 28, 2026, [https://programmerscareer.com/go-function-option-patterns/](https://programmerscareer.com/go-function-option-patterns/)  
-43. 10 years of functional options and key lessons Learned along the way \- ByteSizeGo, accessed February 28, 2026, [https://www.bytesizego.com/blog/10-years-functional-options-golang](https://www.bytesizego.com/blog/10-years-functional-options-golang)  
-44. (Generic) Functional Options Pattern \- The golang.design Initiative, accessed February 28, 2026, [https://golang.design/research/generic-option/](https://golang.design/research/generic-option/)  
-45. Option pattern vs Builder pattern, which one is better? : r/golang \- Reddit, accessed February 28, 2026, [https://www.reddit.com/r/golang/comments/waagos/option\_pattern\_vs\_builder\_pattern\_which\_one\_is/](https://www.reddit.com/r/golang/comments/waagos/option_pattern_vs_builder_pattern_which_one_is/)  
-46. Exponential Backoff Algorithm with Full Jitter Java Implementation \- Stack Overflow, accessed February 28, 2026, [https://stackoverflow.com/questions/66447260/exponential-backoff-algorithm-with-full-jitter-java-implementation](https://stackoverflow.com/questions/66447260/exponential-backoff-algorithm-with-full-jitter-java-implementation)  
-47. Mastering Network Timeouts and Retries in Go: A Practical Guide for Dev.to, accessed February 28, 2026, [https://dev.to/jones\_charles\_ad50858dbc0/mastering-network-timeouts-and-retries-in-go-a-practical-guide-for-devto-jdf](https://dev.to/jones_charles_ad50858dbc0/mastering-network-timeouts-and-retries-in-go-a-practical-guide-for-devto-jdf)  
-48. retry-go/examples/custom\_retry\_function\_test.go at main · avast/retry-go \- GitHub, accessed February 28, 2026, [https://github.com/avast/retry-go/blob/master/examples/custom\_retry\_function\_test.go](https://github.com/avast/retry-go/blob/master/examples/custom_retry_function_test.go)  
-49. Retry strategy | Cloud Storage \- Google Cloud Documentation, accessed February 28, 2026, [https://docs.cloud.google.com/storage/docs/retry-strategy](https://docs.cloud.google.com/storage/docs/retry-strategy)  
-50. Retry-After header \- HTTP \- MDN Web Docs, accessed February 28, 2026, [https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Retry-After](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Retry-After)  
-51. Retry-After HTTP Header in Practice \- DZone, accessed February 28, 2026, [https://dzone.com/articles/retry-after-http-header](https://dzone.com/articles/retry-after-http-header)  
-52. Best Practice: Implementing Retry Logic in HTTP API Clients \- api4ai, accessed February 28, 2026, [https://api4.ai/blog/best-practice-implementing-retry-logic-in-http-api-clients](https://api4.ai/blog/best-practice-implementing-retry-logic-in-http-api-clients)  
-53. How to customize http.Client or http.Transport in Go to retry after timeout? \- Stack Overflow, accessed February 28, 2026, [https://stackoverflow.com/questions/62900451/how-to-customize-http-client-or-http-transport-in-go-to-retry-after-timeout](https://stackoverflow.com/questions/62900451/how-to-customize-http-client-or-http-transport-in-go-to-retry-after-timeout)  
-54. Circuit Breaker Patterns in Go Microservices \- DEV Community, accessed February 28, 2026, [https://dev.to/serifcolakel/circuit-breaker-patterns-in-go-microservices-n3](https://dev.to/serifcolakel/circuit-breaker-patterns-in-go-microservices-n3)  
-55. A practical guide to error handling in Go | Datadog, accessed February 28, 2026, [https://www.datadoghq.com/blog/go-error-handling/](https://www.datadoghq.com/blog/go-error-handling/)  
-56. Go's errors.Is and errors.As: Unwrapping the Right Way | by Basant C. \- Medium, accessed February 28, 2026, [https://medium.com/@caring\_smitten\_gerbil\_914/gos-errors-is-and-errors-as-unwrapping-the-right-way-cff69b374a1f](https://medium.com/@caring_smitten_gerbil_914/gos-errors-is-and-errors-as-unwrapping-the-right-way-cff69b374a1f)  
-57. Enhancing Go Error Handling with Wrapping errors.Is and errors.As | Leapcell, accessed February 28, 2026, [https://leapcell.io/blog/enhancing-go-error-handling-with-wrapping-errors-is-and-errors-as](https://leapcell.io/blog/enhancing-go-error-handling-with-wrapping-errors-is-and-errors-as)  
-58. What is idiomatic way to handle errors? : r/golang \- Reddit, accessed February 28, 2026, [https://www.reddit.com/r/golang/comments/1jhy03u/what\_is\_idiomatic\_way\_to\_handle\_errors/](https://www.reddit.com/r/golang/comments/1jhy03u/what_is_idiomatic_way_to_handle_errors/)  
-59. OpenTelemetry Logging, accessed February 28, 2026, [https://opentelemetry.io/docs/specs/otel/logs/](https://opentelemetry.io/docs/specs/otel/logs/)  
-60. Zero Dependencies In Go \- Tom Jowitt, accessed February 28, 2026, [https://tomjowitt.com/posts/zero-dependencies-in-go/](https://tomjowitt.com/posts/zero-dependencies-in-go/)  
-61. avelino/awesome-go: A curated list of awesome Go frameworks, libraries and software \- GitHub, accessed February 28, 2026, [https://github.com/avelino/awesome-go](https://github.com/avelino/awesome-go)  
-62. Libraries | OpenTelemetry, accessed February 28, 2026, [https://opentelemetry.io/docs/concepts/instrumentation/libraries/](https://opentelemetry.io/docs/concepts/instrumentation/libraries/)  
-63. Open Telemetry \- Engineering Fundamentals Playbook, accessed February 28, 2026, [https://microsoft.github.io/code-with-engineering-playbook/observability/tools/OpenTelemetry/](https://microsoft.github.io/code-with-engineering-playbook/observability/tools/OpenTelemetry/)  
-64. Go 1.7 httptrace and context debug patterns | by Jack Lindamood \- Medium, accessed February 28, 2026, [https://medium.com/@cep21/go-1-7-httptrace-and-context-debug-patterns-608ae887224a](https://medium.com/@cep21/go-1-7-httptrace-and-context-debug-patterns-608ae887224a)  
-65. Logging in Go with Slog: A Practitioner's Guide \- Dash0, accessed February 28, 2026, [https://www.dash0.com/guides/logging-in-go-with-slog](https://www.dash0.com/guides/logging-in-go-with-slog)  
-66. OpenTelemetry Logs: Benefits, Concepts, & Best Practices \- groundcover, accessed February 28, 2026, [https://www.groundcover.com/opentelemetry/opentelemetry-logs](https://www.groundcover.com/opentelemetry/opentelemetry-logs)  
-67. OpenTelemetry Slog \[otelslog\]: Golang Bridge Setup & Examples \- Uptrace, accessed February 28, 2026, [https://uptrace.dev/guides/opentelemetry-slog](https://uptrace.dev/guides/opentelemetry-slog)  
-68. Circuit Breaker Pattern \- Azure Architecture Center | Microsoft Learn, accessed February 28, 2026, [https://learn.microsoft.com/en-us/azure/architecture/patterns/circuit-breaker](https://learn.microsoft.com/en-us/azure/architecture/patterns/circuit-breaker)  
-69. Sharing a library for making HTTP retries easier : r/golang \- Reddit, accessed February 28, 2026, [https://www.reddit.com/r/golang/comments/18o6c9a/sharing\_a\_library\_for\_making\_http\_retries\_easier/](https://www.reddit.com/r/golang/comments/18o6c9a/sharing_a_library_for_making_http_retries_easier/)
-
+...

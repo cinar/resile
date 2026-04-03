@@ -1,6 +1,6 @@
 # Resile: Ergonomic Execution Resilience for Go
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/cinar/resile.svg)](https://pkg.go.dev/github.com/cinar/resile)
+[![Go Reference](https://pkg.go.dev/badge/github.com/cinar/resile.svg)](https://pkg.go.dev/badge/github.com/cinar/resile)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Build Status](https://github.com/cinar/resile/actions/workflows/ci.yml/badge.svg)](https://github.com/cinar/resile/actions/workflows/ci.yml)
 [![Codecov](https://codecov.io/gh/cinar/resile/branch/main/graph/badge.svg)](https://codecov.io/gh/cinar/resile)
@@ -36,6 +36,7 @@
   - [Custom Error Filtering](#18-custom-error-filtering)
   - [Policy Composition & Chaining](#19-policy-composition--chaining)
   - [Native Multi-Error Aggregation](#20-native-multi-error-aggregation)
+  - [Native Chaos Engineering (Fault & Latency Injection)](#21-native-chaos-engineering-fault--latency-injection)
   - [Configuration Reference](#configuration-reference)
 
 - [Architecture & Design](#architecture--design)
@@ -60,6 +61,7 @@ In distributed systems, transient failures are a mathematical certainty. Resile 
 - **Context-Aware**: Strictly respects `context.Context` cancellation and deadlines.
 - **Zero-Dependency Core**: The core library only depends on the Go standard library.
 - **Opinionated Defaults**: Sensible production-ready defaults (5 attempts, exponential backoff).
+- **Chaos-Ready**: Built-in support for fault and latency injection to test your resilience policies.
 
 ---
 
@@ -77,6 +79,7 @@ Want to learn more about the philosophy behind Resile and advanced resilience pa
 * [Respecting Boundaries: Precise Rate Limiting in Go](docs/articles/rate-limiting.md)
 * [Beyond Static Limits: Adaptive Concurrency with TCP-Vegas in Go](docs/articles/adaptive-concurrency.md)
 * [Debugging the Timeline: Native Multi-Error Aggregation in Go](docs/articles/native-multi-error-aggregation.md)
+* [Native Chaos Engineering: Testing Resilience with Fault & Latency Injection](docs/articles/chaos-engineering.md)
 
 
 ## Examples
@@ -94,6 +97,7 @@ The [examples/](examples/) directory contains standalone programs showing how to
 - **[Pushback Signal](examples/pushback/main.go)**: Aborting retries immediately using `CancelAllRetries`.
 - **[Panic Recovery](examples/panicrecovery/main.go)**: Implementing Erlang's "Let It Crash" philosophy.
 - **[State Machine](examples/statemachine/main.go)**: Building resilient state machines inspired by Erlang's `gen_statem`.
+- **[Chaos Injection](examples/chaos/main.go)**: Simulating faults and latency to test your policies.
 
 ---
 
@@ -388,6 +392,27 @@ if err != nil {
 
 [Read more: Debugging the Timeline: Native Multi-Error Aggregation in Go](docs/articles/native-multi-error-aggregation.md)
 
+### 21. Native Chaos Engineering (Fault & Latency Injection)
+Safely test your resilience policies by synthetically inducing faults and latency into your application logic.
+
+```go
+import "github.com/cinar/resile/chaos"
+
+cfg := chaos.Config{
+    ErrorProbability:   0.1,                    // 10% chance of failure
+    InjectedError:      errors.New("chaos!"),   // The error to return
+    LatencyProbability: 0.2,                    // 20% chance of latency
+    LatencyDuration:    100 * time.Millisecond, // Delay to inject
+}
+
+err := resile.DoErr(ctx, action, 
+    resile.WithRetry(3),
+    resile.WithChaos(cfg),
+)
+```
+
+[Read more: Native Chaos Engineering: Testing Resilience with Fault & Latency Injection](docs/articles/chaos-engineering.md)
+
 ---
 
 ## Configuration Reference
@@ -414,6 +439,7 @@ if err != nil {
 | `WithFallback(f)` | Sets a generic fallback function. | `nil` |
 | `WithFallbackErr(f)` | Sets a fallback function for error-only actions. | `nil` |
 | `WithPanicRecovery()` | Enables "Let It Crash" panic handling. | `false` |
+| `WithChaos(chaos.Config)` | Integrates a chaos injector for fault/latency injection. | `nil` |
 
 ---
 
