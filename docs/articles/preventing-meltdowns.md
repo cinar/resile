@@ -121,6 +121,16 @@ When a meltdown is occurring, you don't just want the last error—you want the 
 
 ---
 
+## Testing Your Defense: Chaos Engineering
+
+How do you know your layered defense will actually protect you when things go wrong? Instead of waiting for a real meltdown, you can use Resile's native **Chaos Engineering** features to synthetically induce failure and latency.
+
+By injecting errors or delay using the `WithChaos` option, you can verify that your circuit breaker trips, your adaptive bucket throttles retries, and your concurrency limits adjust as expected—all in a controlled staging environment.
+
+[Read more: Native Chaos Engineering: Testing Resilience with Fault & Latency Injection](chaos-engineering.md)
+
+---
+
 ## Manual Recovery
 
 If you know a service has recovered before the circuit breaker's timeout, you can manually reset it:

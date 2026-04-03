@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cinar/resile/chaos"
 	"github.com/cinar/resile/circuit"
 )
 
@@ -55,6 +56,7 @@ type Config struct {
 	Timeout         time.Duration
 	RateLimiter     *RateLimiter
 	AdaptiveLimiter *AdaptiveLimiter
+	Chaos           *chaos.Injector
 	pipeline        []middleware
 }
 
@@ -289,6 +291,23 @@ func (c *Config) buildDefaultPipeline() {
 	if c.RecoverPanics {
 		c.pipeline = append(c.pipeline, c.panicRecoveryMiddleware())
 	}
+
+	if c.Chaos != nil {
+		c.pipeline = append(c.pipeline, c.chaosMiddleware())
+	}
+}
+
+func (c *Config) chaosMiddleware() middleware {
+	return func(next doAction) doAction {
+		return func(ctx context.Context, state RetryState) error {
+			if c.Chaos == nil {
+				return next(ctx, state)
+			}
+			return c.Chaos.Execute(ctx, func() error {
+				return next(ctx, state)
+			})
+		}
+	}
 }
 
 func (c *Config) rateLimiterMiddleware() middleware {
@@ -495,6 +514,9 @@ func (c *Config) executeHedged(ctx context.Context, action doAction) error {
 	h = c.instrumenterMiddleware()(h)
 	if c.RecoverPanics {
 		h = c.panicRecoveryMiddleware()(h)
+	}
+	if c.Chaos != nil {
+		h = c.chaosMiddleware()(h)
 	}
 
 	for {
