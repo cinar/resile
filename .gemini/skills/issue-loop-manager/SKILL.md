@@ -10,6 +10,7 @@ This skill automates the lifecycle of transforming a GitHub issue into a verifie
 ## Operational Mandates
 
 - **Zero Dependencies:** All implementations MUST use only the Go standard library. No external packages (including `golang.org/x/`) are allowed in the core.
+- **GPG Signing:** ALWAYS use GPG signatures for all commits (e.g., `git commit -S -m "..."`).
 - **Sub-Agent Orchestration:** 
   - Implementation & Tests -> `code-writer`
   - Architectural Review -> `code-reviewer`
