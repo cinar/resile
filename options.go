@@ -231,3 +231,14 @@ func WithChaos(cfg chaos.Config) Option {
 		}
 	}
 }
+
+// WithMinDeadlineThreshold sets the minimum remaining time required to start a new attempt.
+// If the context's deadline is sooner than this threshold, the execution is aborted early.
+func WithMinDeadlineThreshold(threshold time.Duration) Option {
+	return func(c *Config) {
+		c.MinDeadlineThreshold = threshold
+		if c.pipeline != nil {
+			c.pipeline = append(c.pipeline, c.deadlineMiddleware())
+		}
+	}
+}

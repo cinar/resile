@@ -63,6 +63,11 @@ func (p *retryPolicy) shouldRetry(err error) bool {
 		return false
 	}
 
+	// Context cancellation or deadline exceeded should also terminate the loop.
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+
 	// If no specific policy is set, we default to retrying all non-fatal errors.
 	if p.retryIf == nil && p.retryIfFunc == nil {
 		return true
