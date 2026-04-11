@@ -222,6 +222,19 @@ By converting a panic into a standard error, the library allows the existing ret
 
 This architectural addition bridges the gap between simple request retries and the robust, self-healing process management seen in Erlang/OTP environments.
 
+## **Priority-Aware Resource Allocation**
+
+In multi-tenant or multi-tiered applications, treating all traffic as equal during periods of saturation is a suboptimal resilience strategy. When a system reaches its concurrency limits, it must prioritize critical user-facing requests over background or asynchronous tasks.
+
+### **The Priority Bulkhead**
+
+The library introduces a `PriorityBulkhead` that implements **Load Shedding** based on traffic priority levels. It defines utilization thresholds for different categories:
+*   **Low Priority**: Shedded when the bulkhead exceeds a conservative threshold (e.g., 50%).
+*   **Standard Priority**: Shedded when the system reaches high utilization (e.g., 80%).
+*   **Critical Priority**: Allowed until the absolute physical capacity (100%) is reached.
+
+This ensures that high-priority requests always have a reserved "buffer" of capacity, preventing background "noise" from starving critical business processes during traffic spikes.
+
 ## **Macro-Level Protection: Adaptive Retries**
 
 Standard exponential backoff protects individual services from thundering herds, but it does not prevent a massive fleet of clients from continuously retrying against a system that is fundamentally degraded. To address this, the library implements "Adaptive Retries" inspired by modern cloud SDKs.
@@ -257,10 +270,10 @@ The final layer of a sophisticated resilience strategy is the implementation of 
 
 ### **The Middleware Pipeline Architecture**
 
-To support flexible policy composition, the library implements a modular **middleware (interceptor) pattern**. Each resilience strategy (Retry, Circuit Breaker, Bulkhead, Timeout) is implemented as a middleware that wraps the subsequent action. This architecture allows the library to support both a standard, opinionated execution order for rapid development and a fully customizable order for advanced use cases.
+To support flexible policy composition, the library implements a modular **middleware (interceptor) pattern**. Each resilience strategy (Retry, Circuit Breaker, Bulkhead, Priority Bulkhead, Timeout) is implemented as a middleware that wraps the subsequent action. This architecture allows the library to support both a standard, opinionated execution order for rapid development and a fully customizable order for advanced use cases.
 
 The core execution engine builds a pipeline where each middleware handles a specific resilience concern:
-1.  **Bulkhead**: Limits concurrent executions at the outermost layer.
+1.  **Bulkhead / Priority Bulkhead**: Limits concurrent executions at the outermost layer.
 2.  **Retry**: Drives the execution loop and backoff logic.
 3.  **Circuit Breaker**: Monitors failures to protect downstream systems.
 4.  **Timeout**: Enforces temporal constraints on individual attempts.
@@ -290,7 +303,7 @@ This "Onion Model" ensures that policies are applied in the exact order requeste
 The library permits users to register a `FallbackFunc` via functional options. This function is automatically invoked by the execution engine if:
 1.  **Exhaustion**: All configured retry attempts have been depleted without success.
 2.  **Short-Circuiting**: The associated Circuit Breaker is in the `Open` state.
-3.  **Throttling**: The Bulkhead is at capacity.
+3.  **Throttling**: The Bulkhead or Priority Bulkhead is at capacity.
 
 By utilizing Go's type parameters, the library ensures that the fallback function's return signature matches the primary action's signature. This allows developers to seamlessly implement patterns such as returning stale data from a local Redis cache when a primary database query fails, or returning a default configuration when a remote configuration service is unreachable.
 

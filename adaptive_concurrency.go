@@ -6,14 +6,10 @@ package resile
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
 )
-
-// ErrShedLoad is returned when the adaptive concurrency limit is reached.
-var ErrShedLoad = errors.New("load shed: adaptive concurrency limit reached")
 
 // AdaptiveLimiter implements a dynamic concurrency limiter using Additive Increase,
 // Multiplicative Decrease (AIMD) based on Round Trip Time (RTT), applying Little's Law.
