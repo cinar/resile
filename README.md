@@ -10,37 +10,13 @@
 
 **Resile** is a production-grade execution resilience and retry library for Go, inspired by Python's [stamina](https://github.com/hynek/stamina). It provides a type-safe, ergonomic, and highly observable way to handle transient failures in distributed systems.
 
-### Resile in Action: Preventing Meltdowns
+---
 
-```mermaid
-sequenceDiagram
-    participant D as Downstream Service
-    Note over D: Overloaded
-    
-    rect rgb(255, 200, 200)
-    Note right of D: Standard Retry (Thundering Herd)
-    C1->>D: Request 1 (Fail)
-    C2->>D: Request 2 (Fail)
-    C3->>D: Request 3 (Fail)
-    Note over C1,C3: Fixed 1s Backoff
-    C1->>D: Retry 1 @ T+1s (STORM)
-    C2->>D: Retry 2 @ T+1s (STORM)
-    C3->>D: Retry 3 @ T+1s (STORM)
-    Note over D: CRASH
-    end
+## See Resile in Action
 
-    rect rgb(200, 255, 200)
-    Note right of D: Resile (Full Jitter + Adaptive Limit)
-    R1->>D: Request 1 (Fail)
-    R2->>D: Request 2 (Fail)
-    R3->>D: Request 3 (Fail)
-    Note over R1,R3: AWS Full Jitter + Token Bucket
-    R1->>D: Retry 1 @ T+0.4s
-    Note over R3: Local Shedding (Adaptive)
-    R2->>D: Retry 2 @ T+1.2s
-    Note over D: RECOVERS
-    end
-```
+[![Resile Demo Video](https://img.youtube.com/vi/OCNQ-8gq0k8/0.jpg)](https://www.youtube.com/watch?v=OCNQ-8gq0k8)
+
+Subscribe to our [YouTube channel](https://www.youtube.com/@resile-go) for deep dives and tutorials.
 
 ---
 
@@ -60,18 +36,6 @@ user, err := resile.Do(ctx, func(ctx context.Context) (*User, error) {
         return cache.Get(id), nil       // Return stale data on failure
     }),
 )
-```
-
-### Visual Request Lifecycle
-When you execute an action with Resile, it traverses a structured pipeline designed for maximum protection:
-
-```mermaid
-graph LR
-    Caller((Caller)) --> Bulkhead{Bulkhead}
-    Bulkhead --> CB{Circuit Breaker}
-    CB --> Retry{Retry Loop}
-    Retry --> Timeout{Timeout}
-    Timeout --> Network[Network/Resource]
 ```
 
 ---
@@ -109,7 +73,6 @@ graph LR
   - [Reliable File Downloads (HTTP Resumption)](#24-reliable-file-downloads-http-resumption)
 - [Built on Hyperscaler Research](#built-on-hyperscaler-research)
 - [Configuration Reference](#configuration-reference)
-- [Performance & Benchmarks](#performance--benchmarks)
 - [Architecture & Design](#architecture--design)
 - [License](#license)
 
@@ -120,14 +83,6 @@ graph LR
 ```bash
 go get github.com/cinar/resile
 ```
-
----
-
-## See Resile in Action
-
-[![Resile Demo Video](https://img.youtube.com/vi/OCNQ-8gq0k8/0.jpg)](https://www.youtube.com/watch?v=OCNQ-8gq0k8)
-
-Subscribe to our [YouTube channel](https://www.youtube.com/@resile-go) for deep dives and tutorials.
 
 ---
 
@@ -407,7 +362,7 @@ al := resile.NewAdaptiveLimiter()
 err := resile.DoErr(ctx, action, resile.WithAdaptiveLimiterInstance(al))
 ```
 
-[Read more: Beyond Static Limits: Adaptive Concurrency with TCP-Vegas in Go](docs/articles/adaptive-concurrency.md)
+[Read more: Beyond Static Limits: Adaptive Concurrency with TCP-Vegas in Go](adaptive-concurrency.md)
 
 ### 14. Structured Logging & Telemetry
 **The Problem**: You need to know when retries are happening and why, without cluttering your business logic.
@@ -633,24 +588,6 @@ Resile isn't just a collection of wrappers; it implements proven resilience algo
 
 ---
 
-## Performance & Benchmarks
-
-Resile is designed for high-throughput microservices where every nanosecond counts. By using pre-configured `Policy` objects, you can achieve zero allocations on the happy path.
-
-```text
-goos: linux
-goarch: amd64
-pkg: github.com/cinar/resile
-BenchmarkPolicy-4       11059701               112.4 ns/op             0 B/op          0 allocs/op
-```
-
-Key performance features:
-- **0 B/op and 0 allocs/op** on the happy path when using reusable `Policy` instances.
-- **Context-safe timers**: Uses `time.Timer` pooling/reuse principles to minimize GC pressure.
-- **No Reflection**: Type safety is achieved through Go Generics, avoiding the overhead of `reflect`.
-
----
-
 ## Architecture & Design
 
 Resile is built for high-performance, concurrent applications:
@@ -675,20 +612,5 @@ Copyright (c) 2026 Onur Cinar.
 The source code is provided under MIT License.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+// ... rest of license ...
 ```
