@@ -53,6 +53,7 @@ type Config struct {
 	AdaptiveBucket       *AdaptiveBucket
 	RecoverPanics        bool
 	Bulkhead             *Bulkhead
+	PriorityBulkhead     *PriorityBulkhead
 	Timeout              time.Duration
 	RateLimiter          *RateLimiter
 	AdaptiveLimiter      *AdaptiveLimiter
@@ -277,6 +278,10 @@ func (c *Config) buildDefaultPipeline() {
 		c.pipeline = append(c.pipeline, c.bulkheadMiddleware())
 	}
 
+	if c.PriorityBulkhead != nil {
+		c.pipeline = append(c.pipeline, c.priorityBulkheadMiddleware())
+	}
+
 	// Retry is the primary driver in the legacy model.
 	c.pipeline = append(c.pipeline, c.retryMiddleware())
 
@@ -454,6 +459,23 @@ func (c *Config) bulkheadMiddleware() middleware {
 	}
 }
 
+func (c *Config) priorityBulkheadMiddleware() middleware {
+	return func(next doAction) doAction {
+		return func(ctx context.Context, state RetryState) error {
+			if c.PriorityBulkhead == nil {
+				return next(ctx, state)
+			}
+			err := c.PriorityBulkhead.Execute(ctx, func() error {
+				return next(ctx, state)
+			})
+			if (errors.Is(err, ErrBulkheadFull) || errors.Is(err, ErrShedLoad)) && c.Instrumenter != nil {
+				c.Instrumenter.OnBulkheadFull(ctx, state)
+			}
+			return err
+		}
+	}
+}
+
 func (c *Config) instrumenterMiddleware() middleware {
 	return func(next doAction) doAction {
 		return func(ctx context.Context, state RetryState) error {
@@ -522,6 +544,9 @@ func (c *Config) executeHedged(ctx context.Context, action doAction) error {
 	}
 	if c.Bulkhead != nil {
 		h = c.bulkheadMiddleware()(h)
+	}
+	if c.PriorityBulkhead != nil {
+		h = c.priorityBulkheadMiddleware()(h)
 	}
 	if c.Timeout > 0 {
 		h = c.timeoutMiddleware(c.Timeout)(h)

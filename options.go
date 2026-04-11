@@ -145,6 +145,26 @@ func WithBulkheadInstance(bh *Bulkhead) Option {
 	}
 }
 
+// WithPriorityBulkhead integrates a priority-aware bulkhead into the execution.
+func WithPriorityBulkhead(capacity uint, thresholds map[Priority]float64) Option {
+	return func(c *Config) {
+		c.PriorityBulkhead = NewPriorityBulkhead(capacity, thresholds)
+		if c.pipeline != nil {
+			c.pipeline = append(c.pipeline, c.priorityBulkheadMiddleware())
+		}
+	}
+}
+
+// WithPriorityBulkheadInstance integrates a shared priority-aware bulkhead into the execution.
+func WithPriorityBulkheadInstance(bh *PriorityBulkhead) Option {
+	return func(c *Config) {
+		c.PriorityBulkhead = bh
+		if c.pipeline != nil {
+			c.pipeline = append(c.pipeline, c.priorityBulkheadMiddleware())
+		}
+	}
+}
+
 // WithRateLimiter integrates a rate limiter into the execution.
 func WithRateLimiter(limit float64, interval time.Duration) Option {
 	return func(c *Config) {

@@ -24,20 +24,21 @@
   - [Aborting Retries (Pushback Signal)](#6-aborting-retries-pushback-signal)
   - [Fallback Strategies](#7-fallback-strategies)
   - [Bulkhead Pattern](#8-bulkhead-pattern)
-  - [Rate Limiting Pattern](#9-rate-limiting-pattern)
-  - [Layered Defense with Circuit Breaker](#10-layered-defense-with-circuit-breaker)
-  - [Macro-Level Protection (Adaptive Retries)](#11-macro-level-protection-adaptive-retries)
-  - [Adaptive Concurrency (TCP-Vegas)](#12-adaptive-concurrency-tcp-vegas)
-  - [Structured Logging & Telemetry](#13-structured-logging--telemetry)
-  - [Panic Recovery ("Let It Crash")](#14-panic-recovery-let-it-crash)
-  - [Fast Unit Testing](#15-fast-unit-testing)
-  - [Reusable Clients & Dependency Injection](#16-reusable-clients--dependency-injection)
-  - [Marking Errors as Fatal](#17-marking-errors-as-fatal)
-  - [Custom Error Filtering](#18-custom-error-filtering)
-  - [Policy Composition & Chaining](#19-policy-composition--chaining)
-  - [Native Multi-Error Aggregation](#20-native-multi-error-aggregation)
-  - [Native Chaos Engineering (Fault & Latency Injection)](#21-native-chaos-engineering-fault--latency-injection)
-  - [Distributed Deadline Propagation](#22-distributed-deadline-propagation)
+  - [Priority-Aware Bulkhead](#9-priority-aware-bulkhead)
+  - [Rate Limiting Pattern](#10-rate-limiting-pattern)
+  - [Layered Defense with Circuit Breaker](#11-layered-defense-with-circuit-breaker)
+  - [Macro-Level Protection (Adaptive Retries)](#12-macro-level-protection-adaptive-retries)
+  - [Adaptive Concurrency (TCP-Vegas)](#13-adaptive-concurrency-tcp-vegas)
+  - [Structured Logging & Telemetry](#14-structured-logging--telemetry)
+  - [Panic Recovery ("Let It Crash")](#15-panic-recovery-let-it-crash)
+  - [Fast Unit Testing](#16-fast-unit-testing)
+  - [Reusable Clients & Dependency Injection](#17-reusable-clients--dependency-injection)
+  - [Marking Errors as Fatal](#18-marking-errors-as-fatal)
+  - [Custom Error Filtering](#19-custom-error-filtering)
+  - [Policy Composition & Chaining](#20-policy-composition--chaining)
+  - [Native Multi-Error Aggregation](#21-native-multi-error-aggregation)
+  - [Native Chaos Engineering (Fault & Latency Injection)](#22-native-chaos-engineering-fault--latency-injection)
+  - [Distributed Deadline Propagation](#23-distributed-deadline-propagation)
   - [Configuration Reference](#configuration-reference)
 
 - [Architecture & Design](#architecture--design)
@@ -77,6 +78,7 @@ Want to learn more about the philosophy behind Resile and advanced resilience pa
 * [Self-Healing State Machines: Resilient State Transitions in Go](docs/articles/self-healing-state-machines.md)
 * [Resilience Beyond Counters: Sliding Window Circuit Breakers in Go](docs/articles/sliding-window-circuit-breakers.md)
 * [Stop the Domino Effect: Bulkhead Isolation in Go](docs/articles/bulkhead-isolation.md)
+* [Prioritize Your Traffic: Priority-Aware Bulkheads in Go](docs/articles/priority-aware-bulkheads.md)
 * [Respecting Boundaries: Precise Rate Limiting in Go](docs/articles/rate-limiting.md)
 * [Beyond Static Limits: Adaptive Concurrency with TCP-Vegas in Go](docs/articles/adaptive-concurrency.md)
 * [Debugging the Timeline: Native Multi-Error Aggregation in Go](docs/articles/native-multi-error-aggregation.md)
@@ -96,6 +98,7 @@ The [examples/](examples/) directory contains standalone programs showing how to
 - **[Circuit Breaker](examples/circuitbreaker/main.go)**: Layering defensive strategies.
 - **[Adaptive Retries](examples/adaptiveretry/main.go)**: Preventing retry storms with a token bucket.
 - **[Adaptive Concurrency](examples/adaptiveconcurrency/main.go)**: Dynamic concurrency limits based on latency (TCP-Vegas).
+- **[Priority Bulkhead](examples/prioritybulkhead/main.go)**: Load shedding based on traffic priority.
 - **[Pushback Signal](examples/pushback/main.go)**: Aborting retries immediately using `CancelAllRetries`.
 - **[Panic Recovery](examples/panicrecovery/main.go)**: Implementing Erlang's "Let It Crash" philosophy.
 - **[State Machine](examples/statemachine/main.go)**: Building resilient state machines inspired by Erlang's `gen_statem`.
@@ -212,7 +215,24 @@ err := resile.DoErr(ctx, action, resile.WithBulkheadInstance(bh))
 
 [Read more: Stop the Domino Effect: Bulkhead Isolation in Go](docs/articles/bulkhead-isolation.md)
 
-### 9. Rate Limiting Pattern
+### 9. Priority-Aware Bulkhead
+Implement load shedding based on traffic priority to protect critical paths during saturation.
+
+```go
+thresholds := map[resile.Priority]float64{
+    resile.PriorityLow:      0.5, // Shed when >50% full
+    resile.PriorityStandard: 0.8, // Shed when >80% full
+    resile.PriorityCritical: 1.0, // Allow until 100% full
+}
+
+err := resile.DoErr(ctx, action, 
+    resile.WithPriorityBulkhead(20, thresholds),
+)
+```
+
+[Read more: Prioritize Your Traffic: Priority-Aware Bulkheads in Go](docs/articles/priority-aware-bulkheads.md)
+
+### 10. Rate Limiting Pattern
 Control the rate of executions using a time-based token bucket (e.g., requests per second).
 
 ```go
@@ -224,7 +244,7 @@ err := resile.DoErr(ctx, action, resile.WithRateLimiterInstance(rl))
 
 [Read more: Respecting Boundaries: Precise Rate Limiting in Go](docs/articles/rate-limiting.md)
 
-### 10. Layered Defense with Circuit Breaker
+### 11. Layered Defense with Circuit Breaker
 Combine retries (for transient blips) with a mathematically rigorous sliding window circuit breaker (for systemic outages). Resile supports both **Count-based** and **Time-based** sliding windows.
 
 ```go
@@ -253,7 +273,7 @@ cb.Reset()
 
 [Read more: Resilience Beyond Counters: Sliding Window Circuit Breakers in Go](docs/articles/sliding-window-circuit-breakers.md)
 
-### 11. Macro-Level Protection (Adaptive Retries)
+### 12. Macro-Level Protection (Adaptive Retries)
 Prevent "retry storms" by using a token bucket that is shared across your entire cluster of clients. If the downstream service is degraded, the bucket will quickly deplete, causing clients to fail fast locally instead of hammering the service.
 
 ```go
@@ -263,7 +283,7 @@ bucket := resile.DefaultAdaptiveBucket()
 err := resile.DoErr(ctx, action, resile.WithAdaptiveBucket(bucket))
 ```
 
-### 12. Adaptive Concurrency (TCP-Vegas)
+### 13. Adaptive Concurrency (TCP-Vegas)
 Automatically adjust concurrency limits based on Round-Trip Time (RTT). This pattern, inspired by TCP-Vegas, applies Little's Law to prevent cascading failures without manual rate-limit configuration. It increases concurrency when latency is stable and decreases it multiplicatively when queuing is detected.
 
 ```go
@@ -273,7 +293,7 @@ al := resile.NewAdaptiveLimiter()
 err := resile.DoErr(ctx, action, resile.WithAdaptiveLimiterInstance(al))
 ```
 
-### 13. Structured Logging & Telemetry
+### 14. Structured Logging & Telemetry
 Integrate with `slog` or `OpenTelemetry` without bloating your core dependencies.
 
 ```go
@@ -286,7 +306,7 @@ resile.Do(ctx, action,
 )
 ```
 
-### 14. Panic Recovery ("Let It Crash")
+### 15. Panic Recovery ("Let It Crash")
 Convert unexpected Go panics into retryable errors, allowing your application to reset to a known good state without a hard crash.
 
 ```go
@@ -296,7 +316,7 @@ val, err := resile.Do(ctx, riskyAction,
 )
 ```
 
-### 15. Fast Unit Testing
+### 16. Fast Unit Testing
 Never let retry timers slow down your CI. Use `WithTestingBypass` to make all retries execute instantly.
 
 ```go
@@ -308,7 +328,7 @@ func TestMyService(t *testing.T) {
 }
 ```
 
-### 16. Reusable Clients & Dependency Injection
+### 17. Reusable Clients & Dependency Injection
 Use `resile.New()` to create a `Retryer` interface for cleaner code architecture and easier testing.
 
 ```go
@@ -324,7 +344,7 @@ err := retryer.DoErr(ctx, func(ctx context.Context) error {
 })
 ```
 
-### 17. Marking Errors as Fatal
+### 18. Marking Errors as Fatal
 Sometimes you know an error is terminal and shouldn't be retried (e.g., "Invalid API Key"). Use `resile.FatalError()` to abort the retry loop immediately.
 
 ```go
@@ -337,7 +357,7 @@ err := resile.DoErr(ctx, func(ctx context.Context) error {
 })
 ```
 
-### 18. Custom Error Filtering
+### 19. Custom Error Filtering
 Control which errors trigger a retry using `WithRetryIf` (for exact matches) or `WithRetryIfFunc` (for custom logic like checking status codes).
 
 ```go
@@ -352,7 +372,7 @@ err := resile.DoErr(ctx, action,
 )
 ```
 
-### 19. Policy Composition & Chaining
+### 20. Policy Composition & Chaining
 While `Do` and `DoErr` provide a fixed execution order (Bulkhead -> Retry -> Timeout -> Circuit Breaker), you can use the `Policy` API to define a custom order of resilience layers. Policies are thread-safe and reusable.
 
 The order of options in `NewPolicy` determines the execution hierarchy from **outermost to innermost**.
@@ -371,7 +391,7 @@ val, err := standardPolicy.Do(ctx, action)
 err := standardPolicy.DoErr(ctx, actionErr)
 ```
 
-### 20. Native Multi-Error Aggregation
+### 21. Native Multi-Error Aggregation
 Resile uses Go 1.20's `errors.Join` to aggregate and return the complete timeline of failures in both standard and hedged retry loops.
 
 ```go
@@ -394,7 +414,7 @@ if err != nil {
 
 [Read more: Debugging the Timeline: Native Multi-Error Aggregation in Go](docs/articles/native-multi-error-aggregation.md)
 
-### 21. Native Chaos Engineering (Fault & Latency Injection)
+### 22. Native Chaos Engineering (Fault & Latency Injection)
 Safely test your resilience policies by synthetically inducing faults and latency into your application logic.
 
 ```go
@@ -415,7 +435,7 @@ err := resile.DoErr(ctx, action,
 
 [Read more: Native Chaos Engineering: Testing Resilience with Fault & Latency Injection](docs/articles/chaos-engineering.md)
 
-### 22. Distributed Deadline Propagation
+### 23. Distributed Deadline Propagation
 Stop "zombie requests" by propagating the remaining time budget across service boundaries. Resile can inject headers for HTTP/gRPC and abort early if the remaining time is insufficient.
 
 ```go
@@ -449,6 +469,8 @@ resile.InjectDeadlineHeader(ctx, md, "Grpc-Timeout") // Standard gRPC format
 | `WithCircuitBreaker(cb)` | Attaches a circuit breaker state machine. | `nil` |
 | `WithBulkhead(uint)` | Limits concurrent executions. | `nil` |
 | `WithBulkheadInstance(b)` | Attaches a shared bulkhead instance. | `nil` |
+| `WithPriorityBulkhead(uint, map)` | Limits concurrency based on priority. | `nil` |
+| `WithPriorityBulkheadInstance(b)` | Attaches a shared priority bulkhead. | `nil` |
 | `WithRateLimiter(limit, interval)` | Limits execution rate (token bucket). | `nil` |
 | `WithRateLimiterInstance(rl)` | Attaches a shared rate limiter instance. | `nil` |
 | `WithTimeout(duration)` | Sets an execution timeout for the operation. | `0` |
