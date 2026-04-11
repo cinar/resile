@@ -131,6 +131,9 @@ Resile isn't just a retry loop; it's a resilience toolkit. Out of the box, you g
 - **Circuit Breaker Integration**: Stop retrying when a service is fundamentally down.
 - **Panic Recovery**: Convert unexpected panics into retryable errors (the Erlang "Let It Crash" way).
 - **Distributed Deadline Propagation**: Abort zombie requests early and inject timeout headers.
+- **Stateful Resumption**: Automatically handle partial failures by resuming from the last successful byte (e.g., in large downloads).
+
+[Read more: Reliable File Downloads with HTTP Range Resumption](streaming-http-resumption.md)
 
 ---
 
