@@ -10,7 +10,14 @@
 
 ---
 
+## See Resile in Action
+
+[![Resile Demo Video](https://img.youtube.com/vi/OCNQ-8gq0k8/0.jpg)](https://www.youtube.com/watch?v=OCNQ-8gq0k8)
+
+---
+
 ## Table of Contents
+- [See Resile in Action](#see-resile-in-action)
 - [Installation](#installation)
 - [Why Resile?](#why-resile)
 - [Articles & Tutorials](#articles--tutorials)
