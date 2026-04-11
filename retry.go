@@ -60,6 +60,19 @@ type Config struct {
 	Chaos                *chaos.Injector
 	MinDeadlineThreshold time.Duration
 	pipeline             []middleware
+	composedPipeline     doAction
+	mu                   sync.RWMutex
+}
+
+// terminalAction is the base action that retrieves the action from RetryState.
+func terminalAction(ctx context.Context, state RetryState) error {
+	if state.simpleAction != nil {
+		return state.simpleAction(ctx)
+	}
+	if state.action == nil {
+		return nil
+	}
+	return state.action(ctx, state)
 }
 
 func (c *Config) adaptiveLimiterMiddleware() middleware {
@@ -105,7 +118,7 @@ func DoState[T any](ctx context.Context, action func(context.Context, RetryState
 		var innerErr error
 		result, innerErr = action(innerCtx, state)
 		return innerErr
-	})
+	}, nil)
 
 	if err != nil && c.Fallback != nil {
 		if f, ok := c.Fallback.(func(context.Context, error) (T, error)); ok {
@@ -133,7 +146,7 @@ func DoStateHedged[T any](ctx context.Context, action func(context.Context, Retr
 			})
 		}
 		return innerErr
-	})
+	}, nil)
 
 	if err != nil && c.Fallback != nil {
 		if f, ok := c.Fallback.(func(context.Context, error) (T, error)); ok {
@@ -165,7 +178,7 @@ func DoErrState(ctx context.Context, action func(context.Context, RetryState) er
 	for _, opt := range opts {
 		opt(c)
 	}
-	err := c.execute(ctx, action)
+	err := c.execute(ctx, action, nil)
 
 	if err != nil && c.Fallback != nil {
 		if f, ok := c.Fallback.(func(context.Context, error) error); ok {
@@ -182,7 +195,7 @@ func DoErrStateHedged(ctx context.Context, action func(context.Context, RetrySta
 	for _, opt := range opts {
 		opt(c)
 	}
-	err := c.executeHedged(ctx, action)
+	err := c.executeHedged(ctx, action, nil)
 
 	if err != nil && c.Fallback != nil {
 		if f, ok := c.Fallback.(func(context.Context, error) error); ok {
@@ -205,30 +218,69 @@ func New(opts ...Option) Retryer {
 
 // Do satisfies the Retryer interface. Note: returns any for interface compliance.
 func (c *Config) Do(ctx context.Context, action func(context.Context) (any, error)) (any, error) {
-	return Do(ctx, action, func(config *Config) {
-		*config = *c // Copy existing config
-	})
+	var result any
+	err := c.execute(ctx, func(innerCtx context.Context, state RetryState) error {
+		var innerErr error
+		result, innerErr = action(innerCtx)
+		return innerErr
+	}, nil)
+
+	if err != nil && c.Fallback != nil {
+		if f, ok := c.Fallback.(func(context.Context, error) (any, error)); ok {
+			return f(ctx, err)
+		}
+	}
+
+	return result, err
 }
 
 // DoHedged satisfies the Retryer interface.
 func (c *Config) DoHedged(ctx context.Context, action func(context.Context) (any, error)) (any, error) {
-	return DoHedged(ctx, action, func(config *Config) {
-		*config = *c // Copy existing config
-	})
+	var result any
+	var once sync.Once
+	err := c.executeHedged(ctx, func(innerCtx context.Context, state RetryState) error {
+		val, innerErr := action(innerCtx)
+		if innerErr == nil {
+			once.Do(func() {
+				result = val
+			})
+		}
+		return innerErr
+	}, nil)
+
+	if err != nil && c.Fallback != nil {
+		if f, ok := c.Fallback.(func(context.Context, error) (any, error)); ok {
+			return f(ctx, err)
+		}
+	}
+
+	return result, err
 }
 
 // DoErr satisfies the Retryer interface.
 func (c *Config) DoErr(ctx context.Context, action func(context.Context) error) error {
-	return DoErr(ctx, action, func(config *Config) {
-		*config = *c // Copy existing config
-	})
+	err := c.execute(ctx, nil, action)
+
+	if err != nil && c.Fallback != nil {
+		if f, ok := c.Fallback.(func(context.Context, error) error); ok {
+			return f(ctx, err)
+		}
+	}
+
+	return err
 }
 
 // DoErrHedged satisfies the Retryer interface.
 func (c *Config) DoErrHedged(ctx context.Context, action func(context.Context) error) error {
-	return DoErrHedged(ctx, action, func(config *Config) {
-		*config = *c // Copy existing config
-	})
+	err := c.executeHedged(ctx, nil, action)
+
+	if err != nil && c.Fallback != nil {
+		if f, ok := c.Fallback.(func(context.Context, error) error); ok {
+			return f(ctx, err)
+		}
+	}
+
+	return err
 }
 
 // DefaultConfig returns a reasonable production-grade configuration.
@@ -247,20 +299,43 @@ func DefaultConfig() *Config {
 type doAction func(context.Context, RetryState) error
 
 // execute executes the action with the provided configuration and context.
-func (c *Config) execute(ctx context.Context, action doAction) error {
+func (c *Config) execute(ctx context.Context, action doAction, simpleAction func(context.Context) error) error {
+	h := c.getComposedPipeline()
+
+	return h(ctx, RetryState{
+		Name:         c.Name,
+		MaxAttempts:  c.MaxAttempts,
+		action:       action,
+		simpleAction: simpleAction,
+	})
+}
+
+// getComposedPipeline returns the cached composed pipeline or builds it if not present.
+func (c *Config) getComposedPipeline() doAction {
+	c.mu.RLock()
+	if c.composedPipeline != nil {
+		defer c.mu.RUnlock()
+		return c.composedPipeline
+	}
+	c.mu.RUnlock()
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.composedPipeline != nil {
+		return c.composedPipeline
+	}
+
 	if len(c.pipeline) == 0 {
 		c.buildDefaultPipeline()
 	}
 
-	h := action
+	h := terminalAction
 	for i := len(c.pipeline) - 1; i >= 0; i-- {
 		h = c.pipeline[i](h)
 	}
-
-	return h(ctx, RetryState{
-		Name:        c.Name,
-		MaxAttempts: c.MaxAttempts,
-	})
+	c.composedPipeline = h
+	return h
 }
 
 // buildDefaultPipeline builds the legacy hardcoded pipeline order.
@@ -363,7 +438,7 @@ func (c *Config) timeoutMiddleware(timeout time.Duration) middleware {
 func (c *Config) retryMiddleware() middleware {
 	return func(next doAction) doAction {
 		return func(ctx context.Context, state RetryState) error {
-			errs := make([]error, 0, c.MaxAttempts)
+			var errs []error
 			start := time.Now()
 
 			for attempt := uint(0); attempt < c.MaxAttempts; attempt++ {
@@ -525,7 +600,7 @@ func (c *Config) fallbackMiddleware() middleware {
 }
 
 // executeHedged executes the action using speculative retries (hedging).
-func (c *Config) executeHedged(ctx context.Context, action doAction) error {
+func (c *Config) executeHedged(ctx context.Context, action doAction, simpleAction func(context.Context) error) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -538,7 +613,7 @@ func (c *Config) executeHedged(ctx context.Context, action doAction) error {
 
 	// Build attempt pipeline (everything except the outer retry loop).
 	// For hedging, the retry loop is handled by executeHedged itself.
-	h := action
+	h := terminalAction
 	if c.RateLimiter != nil {
 		h = c.rateLimiterMiddleware()(h)
 	}
@@ -581,6 +656,8 @@ func (c *Config) executeHedged(ctx context.Context, action doAction) error {
 						MaxAttempts:   c.MaxAttempts,
 						TotalDuration: time.Since(start),
 						NextDelay:     c.HedgingDelay,
+						action:        action,
+						simpleAction:  simpleAction,
 					}
 
 					err := h(ctx, state)

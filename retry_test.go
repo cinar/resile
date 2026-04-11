@@ -23,7 +23,7 @@ func TestRetryLoop_ContextCancellation(t *testing.T) {
 
 	err := config.execute(ctx, func(ctx context.Context, _ RetryState) error {
 		return errTest
-	})
+	}, nil)
 
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("expected context.DeadlineExceeded, got %v", err)
@@ -47,7 +47,7 @@ func TestRetryLoop_MaxAttempts(t *testing.T) {
 	err := config.execute(ctx, func(ctx context.Context, _ RetryState) error {
 		count++
 		return errTest
-	})
+	}, nil)
 
 	if count != 3 {
 		t.Errorf("expected 3 attempts, got %d", count)
@@ -73,7 +73,7 @@ func TestRetryLoop_FatalError(t *testing.T) {
 			return FatalError(errTest)
 		}
 		return errOther
-	})
+	}, nil)
 
 	if count != 2 {
 		t.Errorf("expected execution to stop at attempt 2 due to fatal error, got %d", count)
@@ -99,7 +99,7 @@ func TestRetryLoop_Success(t *testing.T) {
 			return nil
 		}
 		return errTest
-	})
+	}, nil)
 
 	if count != 3 {
 		t.Errorf("expected execution to stop at attempt 3 due to success, got %d", count)
@@ -141,7 +141,7 @@ func TestRetryLoop_RetryAfter(t *testing.T) {
 	start := time.Now()
 	err := config.execute(ctx, func(ctx context.Context, _ RetryState) error {
 		return &mockRetryAfter{error: errTest, delay: expectedDelay, cancel: false}
-	})
+	}, nil)
 	duration := time.Since(start)
 
 	if !errors.Is(err, errTest) {
@@ -166,7 +166,7 @@ func TestRetryLoop_CancelAllRetries(t *testing.T) {
 	err := config.execute(ctx, func(ctx context.Context, _ RetryState) error {
 		count++
 		return &mockRetryAfter{error: errTest, delay: 0, cancel: true}
-	})
+	}, nil)
 
 	if count != 1 {
 		t.Errorf("expected only 1 attempt due to pushback, got %d", count)
@@ -206,7 +206,7 @@ func TestRetryLoop_Instrumentation(t *testing.T) {
 
 	_ = config.execute(ctx, func(ctx context.Context, _ RetryState) error {
 		return errTest
-	})
+	}, nil)
 
 	if instr.beforeCount != 3 {
 		t.Errorf("expected 3 BeforeAttempt calls, got %d", instr.beforeCount)
@@ -229,7 +229,7 @@ func TestRetryLoop_TestingBypass(t *testing.T) {
 	start := time.Now()
 	_ = config.execute(ctx, func(ctx context.Context, _ RetryState) error {
 		return errTest
-	})
+	}, nil)
 	duration := time.Since(start)
 
 	if duration > 1*time.Second {

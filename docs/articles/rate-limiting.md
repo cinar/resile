@@ -64,6 +64,19 @@ err := resile.DoErr(ctx, myAction,
 
 ---
 
+## Static vs. Adaptive Rate Limiting
+
+A traditional **RateLimiter** is **static**. You pick a number (like 100 requests per second) and hope it stays the right choice. 
+
+But what if you don't know the exact capacity of the target system? Or what if that capacity changes? In these cases, consider using Resile's **Adaptive Concurrency Limiter** (TCP-Vegas style). It automatically discovers the optimal concurrency limit by monitoring Round-Trip Time (RTT).
+
+- Use **RateLimiter** when you have a hard quota to respect (like a 3rd-party API).
+- Use **AdaptiveLimiter** when you want to maximize throughput against a dynamic system without crashing it.
+
+[Read more: Beyond Static Limits: Adaptive Concurrency with TCP-Vegas in Go](adaptive-concurrency.md)
+
+---
+
 ## Observability: Seeing the Shaping
 
 Knowing *when* and *why* your traffic is being throttled is essential for operational visibility. 

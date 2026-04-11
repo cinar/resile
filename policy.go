@@ -106,12 +106,18 @@ func NewPolicy(opts ...Option) *Policy {
 
 // Do executes an action within the resilience policy.
 func (p *Policy) Do(ctx context.Context, action func(context.Context) (any, error)) (any, error) {
-	return p.config.Do(ctx, action)
+	var result any
+	err := p.config.execute(ctx, func(innerCtx context.Context, state RetryState) error {
+		var innerErr error
+		result, innerErr = action(innerCtx)
+		return innerErr
+	}, nil)
+	return result, err
 }
 
 // DoErr executes an action within the resilience policy.
 func (p *Policy) DoErr(ctx context.Context, action func(context.Context) error) error {
-	return p.config.DoErr(ctx, action)
+	return p.config.execute(ctx, nil, action)
 }
 
 // middleware defines a function that wraps a doAction with additional resilience logic.
