@@ -133,7 +133,6 @@ func TestPriorityBulkheadIntegration(t *testing.T) {
 	// Occupy 1 slot
 	active := make(chan struct{})
 	release := make(chan struct{})
-	defer close(release)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -148,14 +147,16 @@ func TestPriorityBulkheadIntegration(t *testing.T) {
 
 	<-active
 
-	// Low priority should fail
+	// Low priority should fail. Use WithMaxAttempts(1) to avoid retries.
 	err := DoErr(WithPriority(context.Background(), PriorityLow), func(ctx context.Context) error {
 		return nil
-	}, WithPriorityBulkheadInstance(bh))
+	}, WithPriorityBulkheadInstance(bh), WithMaxAttempts(1))
 
 	if !errors.Is(err, ErrShedLoad) {
 		t.Errorf("expected ErrShedLoad, got %v", err)
 	}
 
+	// Trigger release before waiting
+	close(release)
 	wg.Wait()
 }
