@@ -39,6 +39,7 @@
   - [Native Multi-Error Aggregation](#21-native-multi-error-aggregation)
   - [Native Chaos Engineering (Fault & Latency Injection)](#22-native-chaos-engineering-fault--latency-injection)
   - [Distributed Deadline Propagation](#23-distributed-deadline-propagation)
+  - [Reliable File Downloads (HTTP Resumption)](#24-reliable-file-downloads-http-resumption)
   - [Configuration Reference](#configuration-reference)
 
 - [Architecture & Design](#architecture--design)
@@ -84,6 +85,7 @@ Want to learn more about the philosophy behind Resile and advanced resilience pa
 * [Debugging the Timeline: Native Multi-Error Aggregation in Go](docs/articles/native-multi-error-aggregation.md)
 * [Native Chaos Engineering: Testing Resilience with Fault & Latency Injection](docs/articles/chaos-engineering.md)
 * [Stopping the Zombie Requests: Distributed Deadline Propagation in Go](docs/articles/distributed-deadline-propagation.md)
+* [Reliable File Downloads with HTTP Range Resumption](docs/articles/streaming-http-resumption.md)
 
 
 ## Examples
@@ -103,6 +105,7 @@ The [examples/](examples/) directory contains standalone programs showing how to
 - **[Panic Recovery](examples/panicrecovery/main.go)**: Implementing Erlang's "Let It Crash" philosophy.
 - **[State Machine](examples/statemachine/main.go)**: Building resilient state machines inspired by Erlang's `gen_statem`.
 - **[Chaos Injection](examples/chaos/main.go)**: Simulating faults and latency to test your policies.
+- **[HTTP Resumption](examples/http_resume_stream/main.go)**: Resuming large file downloads using HTTP Range.
 
 ---
 
@@ -450,6 +453,29 @@ resile.InjectDeadlineHeader(ctx, md, "Grpc-Timeout") // Standard gRPC format
 ```
 
 [Read more: Stopping the Zombie Requests: Distributed Deadline Propagation in Go](docs/articles/distributed-deadline-propagation.md)
+
+### 24. Reliable File Downloads (HTTP Resumption)
+Combine `DoErr` with HTTP `Range` headers to resume large downloads from the last successful byte instead of restarting from zero.
+
+```go
+var bytesReceived int64
+err := resile.DoErr(ctx, func(ctx context.Context) error {
+    req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
+    if bytesReceived > 0 {
+        req.Header.Set("Range", fmt.Sprintf("bytes=%d-", bytesReceived))
+    }
+    resp, err := http.DefaultClient.Do(req)
+    if err != nil { return err }
+    defer resp.Body.Close()
+    
+    // ... handle status code and open file ...
+    n, err := io.Copy(file, resp.Body)
+    bytesReceived += n
+    return err
+}, resile.WithMaxAttempts(10))
+```
+
+[Read more: Reliable File Downloads with HTTP Range Resumption](docs/articles/streaming-http-resumption.md)
 
 ---
 
