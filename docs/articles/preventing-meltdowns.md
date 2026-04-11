@@ -14,7 +14,7 @@ Here is how to prevent microservice meltdowns in Go using [Resile](https://githu
 
 Imagine you have 100 instances of your API. Each instance is configured to retry 3 times. If the database slows down, you suddenly have **300 extra requests** hitting it exactly when it's struggling to recover.
 
-Even with jitter, the aggregate load can be enough to keep the database in a "failed" state indefinitely. To solve this, we need three patterns working together: **Adaptive Retries**, **Circuit Breakers**, and **Adaptive Concurrency Control**.
+Even with jitter, the aggregate load can be enough to keep the database in a "failed" state indefinitely. To solve this, we need four patterns working together: **Adaptive Retries**, **Circuit Breakers**, **Adaptive Concurrency Control**, and **Distributed Deadline Propagation**.
 
 ---
 
@@ -67,14 +67,6 @@ err := cb.Execute(ctx, func() error {
 })
 ```
 
-### Layering in Resile Policies:
-
-```go
-err := resile.DoErr(ctx, action, 
-    resile.WithCircuitBreaker(cb),
-)
-```
-
 ---
 
 ## 3. Adaptive Concurrency (The Buffer)
@@ -94,6 +86,28 @@ err := resile.DoErr(ctx, action,
 
 ---
 
+## 4. Distributed Deadline Propagation (The Social Contract)
+
+While retries and circuit breakers handle *how* you call a service, **Distributed Deadline Propagation** handles *when* you should stop calling it. 
+
+By propagating the remaining "time budget" in a request chain, you can prevent **Zombie Requests**—work that is still being performed by downstream services even though the original caller has already timed out.
+
+### Implementing with Resile:
+
+```go
+// 1. Early Abort
+_, err := resile.Do(ctx, action, 
+    resile.WithMinDeadlineThreshold(10 * time.Millisecond),
+)
+
+// 2. Header Injection
+resile.InjectDeadlineHeader(ctx, req.Header, "X-Request-Timeout")
+```
+
+[Read more: Stopping the Zombie Requests: Distributed Deadline Propagation in Go](distributed-deadline-propagation.md)
+
+---
+
 ## The Ultimate Defense: Layered Resilience
 
 The real power of Resile comes from combining these patterns. You can layer Retries, Circuit Breakers, Adaptive Buckets, and Adaptive Concurrency into a single execution strategy.
@@ -104,6 +118,7 @@ err := resile.DoErr(ctx, action,
     resile.WithCircuitBreaker(cb),      // Layer 2: Stop hitting a dead service
     resile.WithAdaptiveBucket(bucket),  // Layer 3: Prevent cluster-wide retry storms
     resile.WithAdaptiveLimiterInstance(al), // Layer 4: Match concurrency to downstream capacity
+    resile.WithMinDeadlineThreshold(5*time.Millisecond), // Layer 5: Stop zombie requests early
 )
 ```
 
@@ -112,6 +127,7 @@ In this setup:
 2. **The Circuit Breaker** stops you from wasting time on a service that is clearly down.
 3. **The Adaptive Bucket** ensures that even if the breaker hasn't tripped yet, you won't overwhelm the system with aggregate retry load.
 4. **Adaptive Concurrency** prevents your own service from becoming a bottleneck when latency rises, intelligently shedding load before failures occur.
+5. **Deadline Propagation** ensures that you don't start work if there's no hope of finishing it within the user's timeout budget.
 
 ### Observability: Native Multi-Error Aggregation
 

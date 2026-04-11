@@ -40,24 +40,25 @@ func (p *PanicError) Error() string {
 
 // Config represents the configuration for the retry execution.
 type Config struct {
-	Name            string
-	MaxAttempts     uint
-	BaseDelay       time.Duration
-	MaxDelay        time.Duration
-	HedgingDelay    time.Duration
-	Backoff         Backoff
-	Policy          *retryPolicy
-	Instrumenter    Instrumenter
-	CircuitBreaker  *circuit.Breaker
-	Fallback        any
-	AdaptiveBucket  *AdaptiveBucket
-	RecoverPanics   bool
-	Bulkhead        *Bulkhead
-	Timeout         time.Duration
-	RateLimiter     *RateLimiter
-	AdaptiveLimiter *AdaptiveLimiter
-	Chaos           *chaos.Injector
-	pipeline        []middleware
+	Name                 string
+	MaxAttempts          uint
+	BaseDelay            time.Duration
+	MaxDelay             time.Duration
+	HedgingDelay         time.Duration
+	Backoff              Backoff
+	Policy               *retryPolicy
+	Instrumenter         Instrumenter
+	CircuitBreaker       *circuit.Breaker
+	Fallback             any
+	AdaptiveBucket       *AdaptiveBucket
+	RecoverPanics        bool
+	Bulkhead             *Bulkhead
+	Timeout              time.Duration
+	RateLimiter          *RateLimiter
+	AdaptiveLimiter      *AdaptiveLimiter
+	Chaos                *chaos.Injector
+	MinDeadlineThreshold time.Duration
+	pipeline             []middleware
 }
 
 func (c *Config) adaptiveLimiterMiddleware() middleware {
@@ -232,11 +233,12 @@ func (c *Config) DoErrHedged(ctx context.Context, action func(context.Context) e
 // DefaultConfig returns a reasonable production-grade configuration.
 func DefaultConfig() *Config {
 	return &Config{
-		MaxAttempts: 5,
-		BaseDelay:   100 * time.Millisecond,
-		MaxDelay:    30 * time.Second,
-		Backoff:     NewFullJitter(100*time.Millisecond, 30*time.Second),
-		Policy:      &retryPolicy{},
+		MaxAttempts:          5,
+		BaseDelay:            100 * time.Millisecond,
+		MaxDelay:             30 * time.Second,
+		Backoff:              NewFullJitter(100*time.Millisecond, 30*time.Second),
+		Policy:               &retryPolicy{},
+		MinDeadlineThreshold: 5 * time.Millisecond,
 	}
 }
 
@@ -278,6 +280,8 @@ func (c *Config) buildDefaultPipeline() {
 	// Retry is the primary driver in the legacy model.
 	c.pipeline = append(c.pipeline, c.retryMiddleware())
 
+	c.pipeline = append(c.pipeline, c.deadlineMiddleware())
+
 	if c.Timeout > 0 {
 		c.pipeline = append(c.pipeline, c.timeoutMiddleware(c.Timeout))
 	}
@@ -306,6 +310,20 @@ func (c *Config) chaosMiddleware() middleware {
 			return c.Chaos.Execute(ctx, func() error {
 				return next(ctx, state)
 			})
+		}
+	}
+}
+
+func (c *Config) deadlineMiddleware() middleware {
+	return func(next doAction) doAction {
+		return func(ctx context.Context, state RetryState) error {
+			if deadline, ok := ctx.Deadline(); ok {
+				remaining := time.Until(deadline)
+				if remaining <= c.MinDeadlineThreshold {
+					return context.DeadlineExceeded
+				}
+			}
+			return next(ctx, state)
 		}
 	}
 }
@@ -508,6 +526,7 @@ func (c *Config) executeHedged(ctx context.Context, action doAction) error {
 	if c.Timeout > 0 {
 		h = c.timeoutMiddleware(c.Timeout)(h)
 	}
+	h = c.deadlineMiddleware()(h)
 	if c.CircuitBreaker != nil {
 		h = c.circuitBreakerMiddleware()(h)
 	}

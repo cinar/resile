@@ -20,7 +20,7 @@ Here is why your manual retry logic is probably dangerous, and how to fix it usi
 
 ---
 
-## The 4 Silent Killers of Manual Retries
+## The Silent Killers of Manual Retries
 
 ### 1. The Thundering Herd (Missing Jitter)
 If your service has 1,000 instances and the database goes down for a second, all 1,000 instances will fail at once. With a fixed `time.Sleep(1 * time.Second)`, all 1,000 instances will then wake up at the exact same millisecond and hammer the database again. 
@@ -48,6 +48,11 @@ According to the Go standard library, the timer created by `time.After` **is not
 
 ### 4. The Missing History (Last-Error Bias)
 When a loop retries 3 times and finally gives up, what error does it return? Usually just the last one. If your first attempt failed with an "Authentication Error" but the third one failed with "Context Canceled" because the user hung up, you've lost the most important piece of information for debugging.
+
+### 5. The Zombie Requests
+Does your retry logic know when to stop? If you have 50ms left in your request budget, starting a new retry that takes 100ms is a waste of resources. Without **Distributed Deadline Propagation**, you're creating "zombie" requests that work for a user who has already timed out.
+
+[Read more: Stopping the Zombie Requests: Distributed Deadline Propagation in Go](distributed-deadline-propagation.md)
 
 ---
 
@@ -125,6 +130,7 @@ Resile isn't just a retry loop; it's a resilience toolkit. Out of the box, you g
 - **Adaptive Retries**: A client-side token bucket to prevent "retry storms" across a cluster.
 - **Circuit Breaker Integration**: Stop retrying when a service is fundamentally down.
 - **Panic Recovery**: Convert unexpected panics into retryable errors (the Erlang "Let It Crash" way).
+- **Distributed Deadline Propagation**: Abort zombie requests early and inject timeout headers.
 
 ---
 

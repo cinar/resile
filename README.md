@@ -37,6 +37,7 @@
   - [Policy Composition & Chaining](#19-policy-composition--chaining)
   - [Native Multi-Error Aggregation](#20-native-multi-error-aggregation)
   - [Native Chaos Engineering (Fault & Latency Injection)](#21-native-chaos-engineering-fault--latency-injection)
+  - [Distributed Deadline Propagation](#22-distributed-deadline-propagation)
   - [Configuration Reference](#configuration-reference)
 
 - [Architecture & Design](#architecture--design)
@@ -80,6 +81,7 @@ Want to learn more about the philosophy behind Resile and advanced resilience pa
 * [Beyond Static Limits: Adaptive Concurrency with TCP-Vegas in Go](docs/articles/adaptive-concurrency.md)
 * [Debugging the Timeline: Native Multi-Error Aggregation in Go](docs/articles/native-multi-error-aggregation.md)
 * [Native Chaos Engineering: Testing Resilience with Fault & Latency Injection](docs/articles/chaos-engineering.md)
+* [Stopping the Zombie Requests: Distributed Deadline Propagation in Go](docs/articles/distributed-deadline-propagation.md)
 
 
 ## Examples
@@ -341,7 +343,7 @@ Control which errors trigger a retry using `WithRetryIf` (for exact matches) or 
 ```go
 err := resile.DoErr(ctx, action,
     // Only retry if the error is ErrConnReset
-    resile.WithRetryIf(ErrConnReset),
+    resile.WithRetryif(ErrConnReset),
     
     // OR use a custom function for complex logic
     resile.WithRetryIfFunc(func(err error) bool {
@@ -413,6 +415,22 @@ err := resile.DoErr(ctx, action,
 
 [Read more: Native Chaos Engineering: Testing Resilience with Fault & Latency Injection](docs/articles/chaos-engineering.md)
 
+### 22. Distributed Deadline Propagation
+Stop "zombie requests" by propagating the remaining time budget across service boundaries. Resile can inject headers for HTTP/gRPC and abort early if the remaining time is insufficient.
+
+```go
+// 1. Early Abort
+_, err := resile.Do(ctx, action, 
+    resile.WithMinDeadlineThreshold(10 * time.Millisecond),
+)
+
+// 2. Header Injection
+resile.InjectDeadlineHeader(ctx, req.Header, "X-Request-Timeout")
+resile.InjectDeadlineHeader(ctx, md, "Grpc-Timeout") // Standard gRPC format
+```
+
+[Read more: Stopping the Zombie Requests: Distributed Deadline Propagation in Go](docs/articles/distributed-deadline-propagation.md)
+
 ---
 
 ## Configuration Reference
@@ -440,6 +458,7 @@ err := resile.DoErr(ctx, action,
 | `WithFallbackErr(f)` | Sets a fallback function for error-only actions. | `nil` |
 | `WithPanicRecovery()` | Enables "Let It Crash" panic handling. | `false` |
 | `WithChaos(chaos.Config)` | Integrates a chaos injector for fault/latency injection. | `nil` |
+| `WithMinDeadlineThreshold(d)`| Min remaining time required to start an attempt. | `5ms` |
 
 ---
 
