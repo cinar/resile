@@ -5,6 +5,7 @@
 [![Build Status](https://github.com/cinar/resile/actions/workflows/ci.yml/badge.svg)](https://github.com/cinar/resile/actions/workflows/ci.yml)
 [![Codecov](https://codecov.io/gh/cinar/resile/branch/main/graph/badge.svg)](https://codecov.io/gh/cinar/resile)
 [![Go Report Card](https://goreportcard.com/badge/github.com/cinar/resile)](https://goreportcard.com/report/github.com/cinar/resile)
+[![YouTube](https://img.shields.io/badge/YouTube-@resile--go-red?logo=youtube)](https://www.youtube.com/@resile-go)
 
 **Resile** is a production-grade execution resilience and retry library for Go, inspired by Python's [stamina](https://github.com/hynek/stamina). It provides a type-safe, ergonomic, and highly observable way to handle transient failures in distributed systems.
 
@@ -13,6 +14,8 @@
 ## See Resile in Action
 
 [![Resile Demo Video](https://img.youtube.com/vi/OCNQ-8gq0k8/0.jpg)](https://www.youtube.com/watch?v=OCNQ-8gq0k8)
+
+Subscribe to our [YouTube channel](https://www.youtube.com/@resile-go) for deep dives and tutorials.
 
 ---
 
