@@ -23,6 +23,12 @@ type RetryState struct {
 	TotalDuration time.Duration
 	// NextDelay is the duration to be slept before the next attempt.
 	NextDelay time.Duration
+
+	// action is the terminal action to be executed.
+	action doAction
+
+	// simpleAction is the terminal action to be executed when it doesn't need state.
+	simpleAction func(context.Context) error
 }
 
 // Instrumenter defines the lifecycle hooks for monitoring retry executions.

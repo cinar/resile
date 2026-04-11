@@ -29,7 +29,7 @@ func TestDeadlinePropagation_EarlyAbort(t *testing.T) {
 	err := config.execute(ctx, func(ctx context.Context, _ RetryState) error {
 		atomic.AddInt32(&attempts, 1)
 		return nil
-	})
+	}, nil)
 
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("expected context.DeadlineExceeded, got %v", err)
@@ -64,7 +64,7 @@ func TestDeadlinePropagation_DynamicRecalculation(t *testing.T) {
 	err := config.execute(ctx, func(ctx context.Context, _ RetryState) error {
 		atomic.AddInt32(&attempts, 1)
 		return errors.New("retryable error")
-	})
+	}, nil)
 
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("expected context.DeadlineExceeded, got %v", err)
@@ -177,7 +177,7 @@ func TestDeadlinePropagation_HedgedEarlyAbort(t *testing.T) {
 	err := config.executeHedged(ctx, func(ctx context.Context, _ RetryState) error {
 		atomic.AddInt32(&attempts, 1)
 		return nil
-	})
+	}, nil)
 
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("expected context.DeadlineExceeded, got %v", err)
