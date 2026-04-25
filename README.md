@@ -139,6 +139,7 @@ The [examples/](examples/) directory contains standalone programs showing how to
 - **[State Machine](examples/statemachine/main.go)**: Building resilient state machines inspired by Erlang's `gen_statem`.
 - **[Chaos Injection](examples/chaos/main.go)**: Simulating faults and latency to test your policies.
 - **[HTTP Resumption](examples/http_resume_stream/main.go)**: Resuming large file downloads using HTTP Range.
+- **[Redis Resilience](examples/redis/main.go)**: Adding resilience to Redis operations with shared bulkheads.
 
 ---
 
