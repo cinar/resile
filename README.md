@@ -71,6 +71,7 @@ user, err := resile.Do(ctx, func(ctx context.Context) (*User, error) {
   - [Native Chaos Engineering (Fault & Latency Injection)](#22-native-chaos-engineering-fault--latency-injection)
   - [Distributed Deadline Propagation](#23-distributed-deadline-propagation)
   - [Reliable File Downloads (HTTP Resumption)](#24-reliable-file-downloads-http-resumption)
+  - [Redis & SQL Resilience](#25-redis--sql-resilience)
 - [Built on Hyperscaler Research](#built-on-hyperscaler-research)
 - [Configuration Reference](#configuration-reference)
 - [Architecture & Design](#architecture--design)
@@ -110,6 +111,7 @@ Want to learn more about the philosophy behind Resile and advanced resilience pa
 * [Self-Healing State Machines: Resilient State Transitions in Go](docs/articles/self-healing-state-machines.md)
 * [Resilience Beyond Counters: Sliding Window Circuit Breakers in Go](docs/articles/sliding-window-circuit-breakers.md)
 * [Stop the Domino Effect: Bulkhead Isolation in Go](docs/articles/bulkhead-isolation.md)
+* [Reliable Redis: Combining Retries and Bulkheads for Rock-Solid Caching](docs/articles/redis-resilience-with-go.md)
 * [Prioritize Your Traffic: Priority-Aware Bulkheads in Go](docs/articles/priority-aware-bulkheads.md)
 * [Respecting Boundaries: Precise Rate Limiting in Go](docs/articles/rate-limiting.md)
 * [Beyond Static Limits: Adaptive Concurrency with TCP-Vegas in Go](docs/articles/adaptive-concurrency.md)
@@ -544,6 +546,27 @@ err := resile.DoErr(ctx, func(ctx context.Context) error {
 ```
 
 [Read more: Reliable File Downloads with HTTP Range Resumption](docs/articles/streaming-http-resumption.md)
+
+### 25. Redis & SQL Resilience
+**The Problem**: Database connection pools (SQL or NoSQL like Redis) can be exhausted when the database slows down, leading to cascading failures.
+
+**The Recipe**:
+Combine retries for transient blips with a shared bulkhead to strictly limit the number of concurrent operations hitting the connection pool.
+
+```go
+// 1. Create a shared bulkhead matching your pool size
+redisBulkhead := resile.NewBulkhead(20)
+
+// 2. Wrap your Redis or SQL calls
+val, err := resile.Do(ctx, func(ctx context.Context) (string, error) {
+    return rdb.Get(ctx, "key").Result()
+},
+    resile.WithMaxAttempts(3),
+    resile.WithBulkheadInstance(redisBulkhead),
+)
+```
+
+[Read more: Reliable Redis: Combining Retries and Bulkheads for Rock-Solid Caching](docs/articles/redis-resilience-with-go.md)
 
 ---
 
