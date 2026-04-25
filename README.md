@@ -72,6 +72,7 @@ user, err := resile.Do(ctx, func(ctx context.Context) (*User, error) {
   - [Distributed Deadline Propagation](#23-distributed-deadline-propagation)
   - [Reliable File Downloads (HTTP Resumption)](#24-reliable-file-downloads-http-resumption)
   - [SQL Resilience](#25-sql-resilience)
+  - [Redis Resilience](#26-redis-resilience)
 - [Built on Hyperscaler Research](#built-on-hyperscaler-research)
 - [Configuration Reference](#configuration-reference)
 - [Architecture & Design](#architecture--design)
@@ -111,6 +112,7 @@ Want to learn more about the philosophy behind Resile and advanced resilience pa
 * [Self-Healing State Machines: Resilient State Transitions in Go](docs/articles/self-healing-state-machines.md)
 * [Resilience Beyond Counters: Sliding Window Circuit Breakers in Go](docs/articles/sliding-window-circuit-breakers.md)
 * [Stop the Domino Effect: Bulkhead Isolation in Go](docs/articles/bulkhead-isolation.md)
+* [Reliable Redis: Combining Retries and Bulkheads for Rock-Solid Caching](docs/articles/redis-resilience-with-go.md)
 * [Prioritize Your Traffic: Priority-Aware Bulkheads in Go](docs/articles/priority-aware-bulkheads.md)
 * [Respecting Boundaries: Precise Rate Limiting in Go](docs/articles/rate-limiting.md)
 * [Beyond Static Limits: Adaptive Concurrency with TCP-Vegas in Go](docs/articles/adaptive-concurrency.md)
@@ -142,6 +144,7 @@ The [examples/](examples/) directory contains standalone programs showing how to
 - **[Chaos Injection](examples/chaos/main.go)**: Simulating faults and latency to test your policies.
 - **[HTTP Resumption](examples/http_resume_stream/main.go)**: Resuming large file downloads using HTTP Range.
 - **[SQL Resilience](examples/sql/main.go)**: Using Resile with standard `database/sql`.
+- **[Redis Resilience](examples/redis/main.go)**: Adding resilience to Redis operations with shared bulkheads.
 
 ---
 
@@ -563,6 +566,27 @@ _, err := resile.Do(ctx, func(ctx context.Context) (sql.Result, error) {
 ```
 
 [Read more: Building Bulletproof Database Clients in Go: SQL Resilience with Resile](docs/articles/sql-resilience.md)
+
+### 26. Redis Resilience
+**The Problem**: Database connection pools (SQL or NoSQL like Redis) can be exhausted when the database slows down, leading to cascading failures.
+
+**The Recipe**:
+Combine retries for transient blips with a shared bulkhead to strictly limit the number of concurrent operations hitting the connection pool.
+
+```go
+// 1. Create a shared bulkhead matching your pool size
+redisBulkhead := resile.NewBulkhead(20)
+
+// 2. Wrap your Redis or SQL calls
+val, err := resile.Do(ctx, func(ctx context.Context) (string, error) {
+    return rdb.Get(ctx, "key").Result()
+},
+    resile.WithMaxAttempts(3),
+    resile.WithBulkheadInstance(redisBulkhead),
+)
+```
+
+[Read more: Reliable Redis: Combining Retries and Bulkheads for Rock-Solid Caching](docs/articles/redis-resilience-with-go.md)
 
 ---
 

@@ -79,6 +79,14 @@ If your infrastructure is highly dynamic, consider using the `AdaptiveLimiter` a
 
 ---
 
+## Practical Application: Database Connection Pools
+
+A common use case for shared bulkheads is protecting database connection pools (SQL or NoSQL like Redis). By using a bulkhead that matches your pool size, you ensure that your application never blocks indefinitely on the pool itself.
+
+[Read more: Reliable Redis: Combining Retries and Bulkheads for Rock-Solid Caching](redis-resilience-with-go.md)
+
+---
+
 ## Why "Fail-Fast" Matters
 
 When a bulkhead is full, Resile immediately returns `resile.ErrBulkheadFull`. 
