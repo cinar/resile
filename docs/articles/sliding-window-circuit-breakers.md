@@ -93,6 +93,14 @@ cb.Reset()
 
 ---
 
+## Real-world Example: SQL Databases
+
+Circuit breakers are often used to protect databases from thundering herds during recovery. By wrapping your SQL calls with a circuit breaker and retries, you can ensure your application remains responsive even when the database is struggling.
+
+[Read more: Building Bulletproof Database Clients in Go: SQL Resilience with Resile](sql-resilience.md)
+
+---
+
 ## Testing Your Breaker: Chaos Engineering
 
 How do you know your failure thresholds are tuned correctly? Instead of waiting for a real outage, you can use Resile's native **Chaos Engineering** features to synthetically trip your breaker.
