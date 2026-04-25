@@ -133,7 +133,10 @@ Resile isn't just a retry loop; it's a resilience toolkit. Out of the box, you g
 - **Distributed Deadline Propagation**: Abort zombie requests early and inject timeout headers.
 - **Stateful Resumption**: Automatically handle partial failures by resuming from the last successful byte (e.g., in large downloads).
 
-[Read more: Reliable File Downloads with HTTP Range Resumption](streaming-http-resumption.md)
+### Case Study: SQL Resilience
+Retrying database operations is a classic use case, but it requires careful handling of circuit breakers and idempotency.
+
+[Read more: Building Bulletproof Database Clients in Go: SQL Resilience with Resile](sql-resilience.md)
 
 ---
 

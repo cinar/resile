@@ -71,6 +71,7 @@ user, err := resile.Do(ctx, func(ctx context.Context) (*User, error) {
   - [Native Chaos Engineering (Fault & Latency Injection)](#22-native-chaos-engineering-fault--latency-injection)
   - [Distributed Deadline Propagation](#23-distributed-deadline-propagation)
   - [Reliable File Downloads (HTTP Resumption)](#24-reliable-file-downloads-http-resumption)
+  - [SQL Resilience](#25-sql-resilience)
 - [Built on Hyperscaler Research](#built-on-hyperscaler-research)
 - [Configuration Reference](#configuration-reference)
 - [Architecture & Design](#architecture--design)
@@ -117,6 +118,7 @@ Want to learn more about the philosophy behind Resile and advanced resilience pa
 * [Native Chaos Engineering: Testing Resilience with Fault & Latency Injection](docs/articles/chaos-engineering.md)
 * [Stopping the Zombie Requests: Distributed Deadline Propagation in Go](docs/articles/distributed-deadline-propagation.md)
 * [Reliable File Downloads with HTTP Range Resumption](docs/articles/streaming-http-resumption.md)
+* [Building Bulletproof Database Clients in Go: SQL Resilience with Resile](docs/articles/sql-resilience.md)
 
 Also, check out our [Dev.to space](https://dev.to/onurcinar) for more articles and discussions.
 
@@ -544,6 +546,23 @@ err := resile.DoErr(ctx, func(ctx context.Context) error {
 ```
 
 [Read more: Reliable File Downloads with HTTP Range Resumption](docs/articles/streaming-http-resumption.md)
+
+### 25. SQL Resilience
+**The Problem**: Databases are critical yet vulnerable to transient network errors and failovers.
+
+**The Recipe**:
+Wrap standard `database/sql` calls with retries and a circuit breaker to protect against both blips and systemic outages.
+
+```go
+_, err := resile.Do(ctx, func(ctx context.Context) (sql.Result, error) {
+    return db.ExecContext(ctx, "UPDATE users SET active = ? WHERE id = ?", true, 42)
+},
+    resile.WithRetry(3),
+    resile.WithCircuitBreaker(breaker),
+)
+```
+
+[Read more: Building Bulletproof Database Clients in Go: SQL Resilience with Resile](docs/articles/sql-resilience.md)
 
 ---
 
