@@ -28,10 +28,19 @@ This example demonstrates how to use **Resile** to add resilience to a Redis cli
 ## Key Pattern
 
 ```go
+// Define a shared bulkhead for Redis operations.
+redisBulkhead := resile.NewBulkhead(10)
+
+// Common options.
+retryOpts := []resile.Option{
+    resile.WithMaxAttempts(3),
+    resile.WithBulkheadInstance(redisBulkhead),
+}
+
+// Execute command.
 val, err := resile.Do(ctx, func(ctx context.Context) (string, error) {
     return rdb.Get(ctx, "key").Result()
 }, 
-    resile.WithMaxAttempts(3),
-    resile.WithBulkhead(10),
+    retryOpts...,
 )
 ```

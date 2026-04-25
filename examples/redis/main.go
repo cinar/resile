@@ -24,16 +24,24 @@ func main() {
 
 	fmt.Println("--- Redis Resilience Example ---")
 
-	// 2. Wrap Redis Get command with Resile
-	// We combine retries (for transient network issues) and a bulkhead
-	// (to limit concurrent Redis operations and prevent cascading failures).
+	// 2. Define shared resilience policies
+	// We create a shared bulkhead to limit total concurrent Redis operations across all calls.
+	redisBulkhead := resile.NewBulkhead(10)
+
+	// Define common retry options
+	retryOpts := []resile.Option{
+		resile.WithMaxAttempts(3),
+		resile.WithBaseDelay(100 * time.Millisecond),
+		resile.WithBulkheadInstance(redisBulkhead),
+	}
+
+	// 3. Wrap Redis Get command with Resile
+	// We combine retries (for transient network issues) and the shared bulkhead.
 	val, err := resile.Do(ctx, func(ctx context.Context) (string, error) {
 		fmt.Println("Attempting to GET 'my-key' from Redis...")
 		return rdb.Get(ctx, "my-key").Result()
 	},
-		resile.WithMaxAttempts(3),
-		resile.WithBaseDelay(100*time.Millisecond),
-		resile.WithBulkhead(10), // Limit to 10 concurrent operations
+		retryOpts...,
 	)
 
 	if err != nil {
@@ -42,12 +50,14 @@ func main() {
 		fmt.Printf("Redis GET succeeded: %s\n", val)
 	}
 
-	// 3. Wrap Redis Set command with Resile (error only)
+	// 4. Wrap Redis Set command with Resile (error only)
 	err = resile.DoErr(ctx, func(ctx context.Context) error {
 		fmt.Println("Attempting to SET 'my-key' in Redis...")
 		return rdb.Set(ctx, "my-key", "resilient-value", 0).Err()
 	},
-		resile.WithMaxAttempts(2),
+		// We can reuse the same options or provide different ones.
+		// Using the same retryOpts ensures it shares the same bulkhead.
+		retryOpts...,
 	)
 
 	if err != nil {
