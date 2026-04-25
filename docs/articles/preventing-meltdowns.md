@@ -67,6 +67,11 @@ err := cb.Execute(ctx, func() error {
 })
 ```
 
+### Case Study: SQL Resilience
+Applying a circuit breaker to database operations is one of the most effective ways to prevent systemic meltdowns. 
+
+[Read more: Building Bulletproof Database Clients in Go: SQL Resilience with Resile](sql-resilience.md)
+
 ---
 
 ## 3. Adaptive Concurrency (The Buffer)
