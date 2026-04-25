@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Onur Cinar.
+// The source code is provided under MIT License.
+// https://github.com/cinar/resile
+
 package main
 
 import (
@@ -75,7 +79,12 @@ func main() {
 		return
 	}
 
-	rowsAffected, _ := result.RowsAffected()
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		fmt.Printf("failed to get rows affected: %v\n", err)
+		return
+	}
+
 	fmt.Printf("query succeeded after %d attempts; rows affected: %d\n",
 		attempts.Load(), rowsAffected)
 }
