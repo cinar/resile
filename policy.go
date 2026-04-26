@@ -8,6 +8,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/cinar/resile/circuit"
 )
 
 // fatalError is a private wrapper to indicate an error should not be retried.
@@ -118,6 +120,18 @@ func (p *Policy) Do(ctx context.Context, action func(context.Context) (any, erro
 // DoErr executes an action within the resilience policy.
 func (p *Policy) DoErr(ctx context.Context, action func(context.Context) error) error {
 	return p.config.execute(ctx, nil, action)
+}
+
+// Health returns a channel that emits state change events from the underlying resilience components.
+// It returns nil if no health-reporting component is configured.
+// The caller should use a select with default to handle non-blocking receive.
+// Note: Only circuit breaker health events are exposed through Policy.Health().
+// For adaptive limiter events, access the limiter directly via AdaptiveLimiter.Health().
+func (p *Policy) Health() <-chan circuit.StateEvent {
+	if p.config.CircuitBreaker != nil {
+		return p.config.CircuitBreaker.Health()
+	}
+	return nil
 }
 
 // middleware defines a function that wraps a doAction with additional resilience logic.
