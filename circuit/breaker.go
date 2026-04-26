@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// State represents the current state of the circuit breaker.
+// State represents the health state of the circuit breaker.
 type State int
 
 const (
@@ -104,6 +104,10 @@ type Breaker struct {
 	halfOpenCalls     uint64
 	halfOpenFailures  uint64
 	halfOpenCompleted uint64
+
+	// Health channel for backpressure signaling
+	healthCh     chan StateEvent
+	healthChInit bool
 }
 
 // New returns a new Breaker with the provided configuration.
@@ -217,6 +221,34 @@ func (b *Breaker) Reset() {
 	b.transitionToClosed()
 }
 
+// Health returns a channel that emits state change events.
+// The channel is created lazily on first access.
+// The caller should use a select with default to handle non-blocking receive.
+func (b *Breaker) Health() <-chan StateEvent {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if !b.healthChInit {
+		b.healthCh = make(chan StateEvent, 10)
+		b.healthChInit = true
+	}
+	return b.healthCh
+}
+
+func (b *Breaker) emitStateEvent(state HealthState, message string) {
+	if b.healthChInit {
+		select {
+		case b.healthCh <- StateEvent{
+			Component: "circuit-breaker",
+			State:     state,
+			Timestamp: time.Now(),
+			Message:   message,
+		}:
+		default:
+		}
+	}
+}
+
 func (b *Breaker) onFailure(state State) {
 	if state == StateHalfOpen {
 		b.halfOpenFailures++
@@ -252,8 +284,8 @@ func (b *Breaker) onSuccess(state State) {
 func (b *Breaker) transitionToOpen() {
 	b.state = StateOpen
 	b.openedAt = time.Now()
-	// Clear window stats when opening.
 	b.clearWindow()
+	b.emitStateEvent(HealthStateUnhealthy, "circuit opened")
 }
 
 func (b *Breaker) transitionToHalfOpen() {
@@ -261,11 +293,13 @@ func (b *Breaker) transitionToHalfOpen() {
 	b.halfOpenCalls = 0
 	b.halfOpenFailures = 0
 	b.halfOpenCompleted = 0
+	b.emitStateEvent(HealthStateDegraded, "circuit half-open")
 }
 
 func (b *Breaker) transitionToClosed() {
 	b.state = StateClosed
 	b.clearWindow()
+	b.emitStateEvent(HealthStateHealthy, "circuit closed")
 }
 
 func (b *Breaker) clearWindow() {
