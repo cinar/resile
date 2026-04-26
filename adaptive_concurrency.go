@@ -6,7 +6,6 @@ package resile
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -129,11 +128,11 @@ func (al *AdaptiveLimiter) checkAndEmitEvent(decreased bool) {
 	if decreased {
 		threshold := float64(prev) * 0.5
 		if float64(currentMax) <= threshold {
-			al.emitStateEvent(HealthStateDegraded, fmt.Sprintf("capacity decreased from %d to %d", prev, currentMax))
+			al.emitStateEvent(HealthStateDegraded, "capacity decreased")
 		}
 	} else {
 		if currentMax > prev {
-			al.emitStateEvent(HealthStateHealthy, fmt.Sprintf("capacity increased from %d to %d", prev, currentMax))
+			al.emitStateEvent(HealthStateHealthy, "capacity increased")
 		}
 	}
 	al.prevMaxConcurrency = currentMax
