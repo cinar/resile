@@ -46,14 +46,14 @@ type AdaptiveLimiter struct {
 // NewAdaptiveLimiter creates a new AdaptiveLimiter with default configurations.
 func NewAdaptiveLimiter() *AdaptiveLimiter {
 	return &AdaptiveLimiter{
-		maxConcurrency:       10,  // Initial guess
+		maxConcurrency:     10, // Initial guess
 		prevMaxConcurrency: 10,
-		minConcurrency:    1,   // Floor
-		limitScaling:      0.8, // Multiplicative Decrease factor
-		threshold:        1.5, // Threshold for increase/decrease
-		alpha:            0.1, // EWMA smoothing factor
-		decayInterval:     time.Minute,
-		lastDecayUpdate:   time.Now(),
+		minConcurrency:     1,   // Floor
+		limitScaling:       0.8, // Multiplicative Decrease factor
+		threshold:          1.5, // Threshold for increase/decrease
+		alpha:              0.1, // EWMA smoothing factor
+		decayInterval:      time.Minute,
+		lastDecayUpdate:    time.Now(),
 	}
 }
 

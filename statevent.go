@@ -23,7 +23,7 @@ const (
 // StateEvent represents a state change event emitted by resilience components.
 type StateEvent struct {
 	Component string
-	State    HealthState
+	State     HealthState
 	Timestamp time.Time
-	Message  string
+	Message   string
 }

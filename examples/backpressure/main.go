@@ -44,11 +44,11 @@ func demonstrateCircuitBreakerBackpressure(ctx context.Context) {
 
 	cb := circuit.New(circuit.Config{
 		WindowType:           circuit.WindowCountBased,
-		WindowSize:          5,
+		WindowSize:           5,
 		FailureRateThreshold: 50.0,
-		MinimumCalls:        3,
-		ResetTimeout:        2 * time.Second,
-		HalfOpenMaxCalls:    2,
+		MinimumCalls:         3,
+		ResetTimeout:         2 * time.Second,
+		HalfOpenMaxCalls:     2,
 	})
 
 	p := resile.NewPolicy(
