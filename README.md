@@ -1,6 +1,6 @@
 # Resile: Ergonomic Execution Resilience for Go
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/cinar/resile.svg)](https://pkg.go.dev/badge/github.com/cinar/resile)
+[![Go Reference](https://pkg.go.dev/badge/github.com/cinar/resile.svg)](https://pkg.go.dev/github.com/cinar/resile)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Build Status](https://github.com/cinar/resile/actions/workflows/ci.yml/badge.svg)](https://github.com/cinar/resile/actions/workflows/ci.yml)
 [![Codecov](https://codecov.io/gh/cinar/resile/branch/main/graph/badge.svg)](https://codecov.io/gh/cinar/resile)
@@ -8,7 +8,7 @@
 [![YouTube](https://img.shields.io/badge/YouTube-@resile--go-red?logo=youtube)](https://www.youtube.com/@resile-go)
 [![Dev.to](https://img.shields.io/badge/dev.to-onurcinar-0a0a0a?logo=dev.to&logoColor=white)](https://dev.to/onurcinar)
 
-**Resile** is a production-grade execution resilience and retry library for Go, inspired by Python's [stamina](https://github.com/hynek/stamina). It provides a type-safe, ergonomic, and highly observable way to handle transient failures in distributed systems.
+**Resile** is a resilience and retry library for Go, inspired by Python's [stamina](https://github.com/hynek/stamina). It provides a type-safe, ergonomic, and highly observable way to handle transient failures in distributed systems.
 
 ---
 
@@ -30,7 +30,7 @@ user, err := resile.Do(ctx, func(ctx context.Context) (*User, error) {
 },
     resile.WithBulkhead(10),            // Max 10 concurrent requests
     resile.WithCircuitBreaker(cb),      // Stop if failure rate > 50%
-    resile.WithRetry(3),               // 3 attempts with AWS Full Jitter
+    resile.WithRetry(3),                // 3 attempts with AWS Full Jitter
     resile.WithTimeout(1*time.Second),   // Each attempt max 1s
     resile.WithFallback(func(ctx context.Context, err error) (*User, error) {
         return cache.Get(id), nil       // Return stale data on failure
@@ -46,6 +46,7 @@ user, err := resile.Do(ctx, func(ctx context.Context) (*User, error) {
 - [Why Resile?](#why-resile)
 - [Articles & Tutorials](#articles--tutorials)
 - [Examples](#examples)
+- [API Reference](#api-reference)
 - [Resilience Cookbook](#resilience-cookbook)
   - [Simple Retries](#1-simple-retries)
   - [Value-Yielding Retries (Generics)](#2-value-yielding-retries-generics)
@@ -75,7 +76,10 @@ user, err := resile.Do(ctx, func(ctx context.Context) (*User, error) {
   - [Redis Resilience](#26-redis-resilience)
 - [Built on Hyperscaler Research](#built-on-hyperscaler-research)
 - [Configuration Reference](#configuration-reference)
+- [Sentinel Errors](#sentinel-errors)
 - [Architecture & Design](#architecture--design)
+- [Community](#community)
+- [Acknowledgements](#acknowledgements)
 - [License](#license)
 
 ---
@@ -86,6 +90,8 @@ user, err := resile.Do(ctx, func(ctx context.Context) (*User, error) {
 go get github.com/cinar/resile
 ```
 
+**Requires Go 1.24+** (uses generics and `errors.Join`).
+
 ---
 
 ## Why Resile?
@@ -95,8 +101,8 @@ In distributed systems, transient failures are a mathematical certainty. Resile 
 - **Adaptive Retries**: Built-in token bucket rate limiting to prevent "retry storms" across a cluster.
 - **Generic-First**: No `interface{}` or reflection. Full compile-time type safety.
 - **Context-Aware**: Strictly respects `context.Context` cancellation and deadlines.
-- **Zero-Dependency Core**: The core library only depends on the Go standard library.
-- **Opinionated Defaults**: Sensible production-ready defaults (5 attempts, exponential backoff).
+- **Zero-Dependency Core**: The core `resile`, `circuit`, and `chaos` packages depend only on the Go standard library. Telemetry adapters (`telemetry/`) are opt-in.
+- **Opinionated Defaults**: Sensible defaults (5 attempts, exponential backoff).
 - **Chaos-Ready**: Built-in support for fault and latency injection to test your resilience policies.
 
 ---
@@ -135,9 +141,12 @@ The [examples/](examples/) directory contains standalone programs showing how to
 - **[Fallback Strategies](examples/fallback/main.go)**: Returning stale data when all attempts fail.
 - **[Stateful Rotation](examples/stateful/main.go)**: Rotating API endpoints using `RetryState`.
 - **[Circuit Breaker](examples/circuitbreaker/main.go)**: Layering defensive strategies.
+- **[Backpressure](examples/backpressure/main.go)**: Full backpressure demo combining circuit breaker and adaptive retries.
 - **[Adaptive Retries](examples/adaptiveretry/main.go)**: Preventing retry storms with a token bucket.
 - **[Adaptive Concurrency](examples/adaptiveconcurrency/main.go)**: Dynamic concurrency limits based on latency (TCP-Vegas).
+- **[Bulkhead](examples/bulkhead/main.go)**: Standalone bulkhead isolation pattern.
 - **[Priority Bulkhead](examples/prioritybulkhead/main.go)**: Load shedding based on traffic priority.
+- **[Rate Limiter](examples/ratelimiter/main.go)**: Token bucket rate limiting.
 - **[Pushback Signal](examples/pushback/main.go)**: Aborting retries immediately using `CancelAllRetries`.
 - **[Panic Recovery](examples/panicrecovery/main.go)**: Implementing Erlang's "Let It Crash" philosophy.
 - **[State Machine](examples/statemachine/main.go)**: Building resilient state machines inspired by Erlang's `gen_statem`.
@@ -145,6 +154,28 @@ The [examples/](examples/) directory contains standalone programs showing how to
 - **[HTTP Resumption](examples/http_resume_stream/main.go)**: Resuming large file downloads using HTTP Range.
 - **[SQL Resilience](examples/sql/main.go)**: Using Resile with standard `database/sql`.
 - **[Redis Resilience](examples/redis/main.go)**: Adding resilience to Redis operations with shared bulkheads.
+- **[Deadline Propagation](examples/deadline/main.go)**: Distributed deadline propagation with HTTP headers.
+
+---
+
+## API Reference
+
+| Function | Signature | Description |
+| :--- | :--- | :--- |
+| `Do[T]` | `(ctx, action, ...Option) (T, error)` | Retry an action that returns a value. |
+| `DoErr` | `(ctx, action, ...Option) error` | Retry an action that returns only an error. |
+| `DoState[T]` | `(ctx, action, ...Option) (T, error)` | Like `Do`, with access to `RetryState`. |
+| `DoErrState` | `(ctx, action, ...Option) error` | Like `DoErr`, with access to `RetryState`. |
+| `DoHedged[T]` | `(ctx, action, ...Option) (T, error)` | Speculative retries for tail latency. |
+| `DoErrHedged` | `(ctx, action, ...Option) error` | Error-only hedging variant. |
+| `DoStateHedged[T]` | `(ctx, action, ...Option) (T, error)` | Stateful hedging (e.g., endpoint rotation). |
+| `DoErrStateHedged` | `(ctx, action, ...Option) error` | Error-only stateful hedging. |
+| `New` | `(...Option) Retryer` | Create a reusable `Retryer` instance. |
+| `NewPolicy` | `(...Option) *Policy` | Create a composed resilience policy. |
+| `NewStateMachine[S,D,E]` | `(S, D, TransitionFunc, ...Option) *StateMachine` | Create a resilient state machine. |
+| `FatalError` | `(error) error` | Mark an error as non-retryable. |
+| `WithTestingBypass` | `(context.Context) context.Context` | Skip all backoff delays in tests. |
+| `InjectDeadlineHeader` | `(ctx, Header, string)` | Propagate deadline to outgoing requests. |
 
 ---
 
@@ -193,6 +224,15 @@ err := resile.DoErrHedged(ctx, action,
     resile.WithMaxAttempts(2),
     resile.WithHedgingDelay(50 * time.Millisecond),
 )
+```
+
+Stateful hedging variants are also available for endpoint rotation with speculative retries:
+
+```go
+data, err := resile.DoStateHedged(ctx, func(ctx context.Context, state resile.RetryState) (string, error) {
+    url := endpoints[state.Attempt % uint(len(endpoints))]
+    return client.Get(ctx, url)
+}, resile.WithHedgingDelay(100 * time.Millisecond))
 ```
 
 [Read more: Beating Tail Latency: A Guide to Request Hedging in Go Microservices](docs/articles/beating-tail-latency.md)
@@ -368,7 +408,7 @@ al := resile.NewAdaptiveLimiter()
 err := resile.DoErr(ctx, action, resile.WithAdaptiveLimiterInstance(al))
 ```
 
-[Read more: Beyond Static Limits: Adaptive Concurrency with TCP-Vegas in Go](adaptive-concurrency.md)
+[Read more: Beyond Static Limits: Adaptive Concurrency with TCP-Vegas in Go](docs/articles/adaptive-concurrency.md)
 
 ### 14. Structured Logging & Telemetry
 **The Problem**: You need to know when retries are happening and why, without cluttering your business logic.
@@ -385,6 +425,22 @@ resile.Do(ctx, action,
     resile.WithInstrumenter(resileslog.New(logger)),
 )
 ```
+
+```go
+import "github.com/cinar/resile/telemetry/resileotel"
+
+instr, err := resileotel.New(tracerProvider, meterProvider)
+if err != nil {
+    log.Fatal(err)
+}
+
+resile.Do(ctx, action,
+    resile.WithName("get-inventory"),
+    resile.WithInstrumenter(instr),
+)
+```
+
+Resile ships two built-in instrumenters: `resileslog` for structured logging and `resileotel` for OpenTelemetry traces and metrics.
 
 ### 15. Panic Recovery ("Let It Crash")
 **The Problem**: A single unexpected panic in a request handler can take down an entire process.
@@ -623,12 +679,28 @@ Resile isn't just a collection of wrappers; it implements proven resilience algo
 | `WithRateLimiterInstance(rl)` | Attaches a shared rate limiter instance. | `nil` |
 | `WithTimeout(duration)` | Sets an execution timeout for the operation. | `0` |
 | `WithAdaptiveBucket(b)` | Attaches a token bucket for adaptive retries. | `nil` |
+| `WithAdaptiveLimiter()` | Creates an adaptive concurrency limiter (TCP-Vegas). | `nil` |
+| `WithAdaptiveLimiterInstance(al)` | Attaches a shared adaptive concurrency limiter. | `nil` |
 | `WithInstrumenter(inst)` | Attaches telemetry (slog/OTel/Prometheus). | `nil` |
 | `WithFallback(f)` | Sets a generic fallback function. | `nil` |
 | `WithFallbackErr(f)` | Sets a fallback function for error-only actions. | `nil` |
 | `WithPanicRecovery()` | Enables "Let It Crash" panic handling. | `false` |
 | `WithChaos(chaos.Config)` | Integrates a chaos injector for fault/latency injection. | `nil` |
 | `WithMinDeadlineThreshold(d)`| Min remaining time required to start an attempt. | `5ms` |
+
+---
+
+## Sentinel Errors
+
+Resile exports typed sentinel errors for programmatic error handling:
+
+| Error | Returned When |
+| :--- | :--- |
+| `ErrBulkheadFull` | Bulkhead capacity is reached and the request cannot be admitted. |
+| `ErrShedLoad` | Priority bulkhead sheds traffic below the priority threshold. |
+| `ErrRateLimitExceeded` | Rate limiter blocks execution due to quota exhaustion. |
+
+All sentinel errors support `errors.Is()` for matching.
 
 ---
 
@@ -639,6 +711,17 @@ Resile is built for high-performance, concurrent applications:
 - **Context Integrity**: Every internal sleep is a `select` between the timer and `ctx.Done()`.
 - **Zero Allocations**: Core execution loop is designed to be allocation-efficient.
 - **Errors are Values**: Leverage standard `errors.Is` and `errors.As` for all policy decisions.
+- **Health Monitoring**: `Policy.Health()` returns a channel of `circuit.StateEvent` for real-time circuit breaker state changes, enabling dashboard integration.
+- **Benchmark-Proven**: `Policy` execution runs in ~103 ns/op with 0 allocations; `DoErr` in ~561 ns/op (`go test -bench . -benchmem`).
+
+---
+
+## Community
+
+- [Contributing Guide](CONTRIBUTING.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Security Policy](SECURITY.md)
+- [Support](SUPPORT.md)
 
 ---
 
@@ -650,26 +733,3 @@ Resile is built for high-performance, concurrent applications:
 ## License
 
 Resile is released under the [MIT License](LICENSE).
-
-```
-Copyright (c) 2026 Onur Cinar.
-The source code is provided under MIT License.
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
